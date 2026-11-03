@@ -60,8 +60,11 @@ Enter یا `n` یعنی هیچ تغییری نده. فقط `y` یا `yes` اجا
 sha256sum -c BUNDLE_NAME.tar.gz.sha256
 tar -xzf BUNDLE_NAME.tar.gz
 cd BUNDLE_NAME
-sudo sh install.sh
+sudo env PYTHONDONTWRITEBYTECODE=1 sh install.sh
 ```
+
+برای این snapshot، متغیر بالا مانع ساخت `__pycache__` داخل بسته و خطای تطبیق فهرست checksum می‌شود.
+راه‌انداز تک‌خطی این تنظیم را خودش اعمال می‌کند.
 
 ## تنظیم آیفون
 
