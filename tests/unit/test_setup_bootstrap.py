@@ -57,6 +57,17 @@ def test_piped_launcher_downloads_pinned_code_and_keeps_prompts(tmp_path):
             done, status = os.waitpid(pid, os.WNOHANG)
             if done:
                 pid = None
+        # A child may exit between writing output and waitpid. Drain the PTY
+        # after reaping it so scheduler timing cannot hide its last message.
+        if pid is None:
+            while select.select([terminal], [], [], 0)[0]:
+                try:
+                    chunk = os.read(terminal, 8192)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                output += chunk
         assert b"DOWNLOADED_INSTALLER_EXECUTED" in output, output.decode(errors="replace")
         assert pid is None, "Launcher did not exit"
         assert os.waitstatus_to_exitcode(status) == 7
