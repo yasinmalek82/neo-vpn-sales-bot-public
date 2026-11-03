@@ -1,0 +1,19 @@
+{# «حساب من»: the signed-in person's services and wallet, read-only. #}
+<div class="page-head">
+  <h1>حساب من</h1>
+  <p class="sub">سرویس‌ها و کیف پولت رو اینجا می‌بینی. خرید و تمدید توی ربات انجام می‌شه.</p>
+</div>
+
+<h2 class="group-title">سرویس‌های تو</h2>
+{% if page.services %}
+<section class="panel">
+  {% with services = page.services %}{% include "_services.html" %}{% endwith %}
+</section>
+{% else %}
+<p class="empty">هنوز سرویسی نداری. اولین سرویست رو با «خرید اشتراک» توی ربات بگیر.</p>
+{% endif %}
+
+<h2 class="group-title">کیف پول</h2>
+<section class="panel">
+  {% with wallet = page.wallet %}{% include "_wallet.html" %}{% endwith %}
+</section>

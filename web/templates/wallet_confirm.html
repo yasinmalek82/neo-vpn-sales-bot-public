@@ -1,0 +1,18 @@
+{# Step 2: who, how much, before and after. The form below is the only thing
+   that writes, and it carries the request key this page was minted with. #}
+<div class="page-head"><h1>تأیید تغییر کیف پول</h1></div>
+<form class="panel stack" hx-post="/panel/customers/{{ user_id }}/wallet/apply" hx-target="#main">
+  <dl class="kv">
+    <dt>مشتری</dt><dd><b>{{ customer }}</b></dd>
+    <dt>{{ 'شارژ' if is_credit else 'کسر' }}</dt><dd class="num"><b>{{ amount }}</b></dd>
+    <dt>موجودی فعلی</dt><dd class="num">{{ before }}</dd>
+    <dt>موجودی بعد از اعمال</dt><dd class="num"><b>{{ after }}</b></dd>
+  </dl>
+  <p class="hint">این تغییر در دفتر کیف پول ثبت می‌شود و برگشت‌پذیر نیست.</p>
+  <input type="hidden" name="amount" value="{{ signed_amount }}">
+  <input type="hidden" name="token" value="{{ token }}">
+  <div class="actions">
+    <button type="submit" class="btn primary" hx-disabled-elt="this">تأیید</button>
+    <a href="#" class="btn" hx-get="/panel/customers/{{ user_id }}" hx-target="#main">انصراف</a>
+  </div>
+</form>

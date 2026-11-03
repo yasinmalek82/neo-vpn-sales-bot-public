@@ -1,0 +1,14 @@
+{# The bot's «⚙️ تنظیمات»: the four sections with their one-line state. Each line
+   is composed in services/settings_overview.py; this file decides nothing. #}
+<div class="page-head">
+  <h1>تنظیمات</h1>
+  <p class="sub">وضعیت هر بخش. اتصال پنل، گروه گزارش و پس‌زمینهٔ QR اینجا فقط دیده می‌شوند و عوض‌کردنشان از ربات است.</p>
+</div>
+<div class="rows">
+  {% for card in cards %}
+  <a href="#" class="rowbtn go" hx-get="{{ card.url }}" hx-target="#main">
+    <span class="c-who"><span class="c-name">{{ card.title }}</span></span>
+    <span class="c-sv">{{ card.line }}</span>
+  </a>
+  {% endfor %}
+</div>

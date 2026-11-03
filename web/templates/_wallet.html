@@ -1,0 +1,15 @@
+<p class="line">🏦 موجودی کیف پول: <b class="num">{{ wallet.balance_toman | toman }}</b> تومان</p>
+<h3 class="sub-title">آخرین تراکنش‌ها</h3>
+{% if wallet.entries %}
+<ul class="entries">
+  {% for e in wallet.entries %}
+  <li class="entry">
+    <span class="e-label">{{ e.label_fa }}</span>
+    <span class="e-amt num"><bdi dir="ltr">{{ '+' if e.is_credit else '−' }}{{ e.amount_toman | toman }}</bdi> تومان</span>
+    <span class="e-date num">{{ e.created_at | jalali }}</span>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="empty">هنوز تراکنشی نداری.</p>
+{% endif %}

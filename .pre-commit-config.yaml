@@ -1,0 +1,11 @@
+# Local git hooks only. CI runs ruff/black directly (no pre-commit required).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+  - repo: https://github.com/psf/black
+    rev: 26.5.1
+    hooks:
+      - id: black

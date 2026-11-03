@@ -1,0 +1,90 @@
+{
+  "currency": "IRT",
+  "volume_plan": {
+    "volume_options_gb": [
+      30,
+      50,
+      100,
+      200
+    ],
+    "duration_options_days": [
+      30,
+      90,
+      180,
+      365
+    ],
+    "tiers": [
+      {
+        "max_gb": 50,
+        "price_per_gb_toman": "12000"
+      },
+      {
+        "max_gb": 100,
+        "price_per_gb_toman": "10000"
+      },
+      {
+        "max_gb": null,
+        "price_per_gb_toman": "8000"
+      }
+    ],
+    "duration_discounts": [
+      {
+        "min_days": 90,
+        "percent": "10"
+      },
+      {
+        "min_days": 180,
+        "percent": "17"
+      },
+      {
+        "min_days": 365,
+        "percent": "25"
+      }
+    ]
+  },
+  "unlimited_plan": {
+    "user_options": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "duration_options_months": [
+      1,
+      3,
+      6,
+      12
+    ],
+    "base_price_first_user_toman": "150000",
+    "additional_user_coefficients": [
+      "0.70",
+      "0.55",
+      "0.40"
+    ],
+    "duration_discounts": [
+      {
+        "min_months": 3,
+        "percent": "10"
+      },
+      {
+        "min_months": 6,
+        "percent": "17"
+      },
+      {
+        "min_months": 12,
+        "percent": "25"
+      }
+    ]
+  },
+  "promo_codes": {
+    "WELCOME10": {
+      "percent": "10"
+    }
+  },
+  "default_group_ids": [
+    1,
+    2
+  ],
+  "default_hwid_limit_volume": 1
+}

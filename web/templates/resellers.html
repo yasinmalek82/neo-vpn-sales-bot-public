@@ -1,0 +1,34 @@
+{# The bot's «🏪 نمایندگان»: one line per shop, this Jalali month's sales and trials
+   (services/reseller_sheet.list_resellers, the bot's own counting functions). Names and
+   handles are user input: autoescape only, never |safe. The role is granted and removed in
+   the bot; nothing here changes it. #}
+<div class="page-head">
+  <h1>نمایندگان</h1>
+  <p class="sub">{{ words.month_hint }}</p>
+</div>
+
+{% if not page.rows %}
+<p class="empty">{{ empty_text }}</p>
+{% else %}
+<p class="hint">{{ page.total | fa }} نماینده • نمایش {{ (page.offset + 1) | fa }} تا {{ (page.offset + page.rows | length) | fa }}</p>
+<div class="rows">
+  {% for row in page.rows %}
+  <a href="#" class="rowbtn" hx-get="{{ list_url }}/{{ row.user_id }}" hx-target="#main">
+    <span class="c-who">
+      <span class="c-name">{{ row.name }}</span>
+      <span class="lat">{{ row.handle }}</span>
+    </span>
+    <span class="c-sv">{{ row.sales | fa }} فروش{% if row.trial_quota or row.trials_used %} • تست {{ row.trials_used | fa }}/{{ row.trial_quota | fa }}{% endif %}</span>
+    <span class="c-sv">{{ 'نرخ گیگ دارد' if row.rate_set else 'بدون نرخ گیگ' }}</span>
+    <span class="c-wallet num">{{ row.priced_count | fa }} قیمت پلن</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if page.has_prev or page.has_next %}
+<div class="pager">
+  {% if page.has_prev %}<a href="#" class="btn" hx-get="{{ list_url }}?o={{ page.prev_offset }}" hx-target="#main">قبلی</a>{% endif %}
+  {% if page.has_next %}<a href="#" class="btn" hx-get="{{ list_url }}?o={{ page.next_offset }}" hx-target="#main">بعدی</a>{% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,79 @@
+{# The bot's «🏷 کدهای تخفیف»: same list (services/promo_admin.promo_lines composes it for
+   both), same rules and live usage. A control is drawn only for a store owner; the
+   server refuses anyone else. Nothing here decides a rule: it prints what it is given.
+   Creating a code that exists replaces it, as the bot's wizard does. #}
+
+{% macro form_open(action, cls='') %}<form class="{{ cls }}" hx-post="{{ promo_url }}/{{ action }}" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button"><input type="hidden" name="version" value="{{ version }}">{% endmacro %}
+
+<div class="page-head">
+  <h1>کدهای تخفیف</h1>
+  {% if empty %}
+  <p class="sub">{{ empty }}</p>
+  {% else %}
+  <p class="sub">{{ title }}</p>
+  {% if read_only_hint %}<p class="sub">{{ read_only_hint }}</p>{% endif %}
+  {% endif %}
+</div>
+
+{% if not empty %}
+{% if notice %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}
+
+<section class="panel" aria-labelledby="h-codes">
+  <div class="panel-head"><h2 id="h-codes">فهرست</h2></div>
+  <div class="promos">
+    {% for line in lines %}
+    <div class="promo{{ '' if line.active else ' off' }}">
+      <div class="pr-main">
+        <span class="pr-code lat">{{ line.code }}</span>
+        <span class="num">{{ line.percent }}٪</span>
+        <span class="pill{{ '' if line.active else ' warn' }}">{{ '✅ فعال' if line.active else '❌ غیرفعال' }}</span>
+      </div>
+      <div class="pr-rules">{{ line.rules_text }}</div>
+      <div class="pr-usage num">{{ line.usage }}</div>
+      {% if can_edit %}
+      <div class="pr-actions">
+        {{ form_open('c/' ~ (line.code | urlencode) ~ '/toggle', 'row') }}
+          <span>{{ 'روشن' if line.active else 'خاموش' }}</span>
+          <button type="submit" class="sw" role="switch" aria-checked="{{ 'true' if line.active else 'false' }}" aria-label="روشن یا خاموش کردن {{ line.code }}"><i></i></button>
+        </form>
+        {{ form_open('c/' ~ (line.code | urlencode) ~ '/delete') }}
+          <button type="submit" class="btn" aria-label="حذف {{ line.code }}">🗑</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="empty">هنوز کدی نیست.</p>
+    {% endfor %}
+  </div>
+</section>
+
+{% if can_edit %}
+<section class="panel" aria-labelledby="h-add">
+  <div class="panel-head"><h2 id="h-add">➕ افزودن کد تخفیف</h2></div>
+  {{ form_open('add', 'set') }}
+    <div class="inline">
+      <label for="f-code">کد</label>
+      <span class="money"><input id="f-code" class="lat" name="code" autocomplete="off" maxlength="32" value="{{ typed.get('code', '') }}" placeholder="WELCOME10"></span>
+      <label for="f-percent">درصد</label>
+      <span class="money"><input id="f-percent" name="percent" inputmode="decimal" autocomplete="off" value="{{ typed.get('percent', '') }}" placeholder="۱۰"><span>٪</span></span>
+    </div>
+    <label class="check"><input type="checkbox" name="first" value="1"{% if typed.get('first') == '1' %} checked{% endif %}> {{ ask_first }}</label>
+    <div class="inline">
+      <label for="f-per">{{ ask_user_limit }}</label>
+      <span class="money"><input id="f-per" name="per_user" inputmode="numeric" autocomplete="off" value="{{ typed.get('per_user', '') }}"></span>
+    </div>
+    <div class="inline">
+      <label for="f-total">{{ ask_total_limit }}</label>
+      <span class="money"><input id="f-total" name="total" inputmode="numeric" autocomplete="off" value="{{ typed.get('total', '') }}"></span>
+    </div>
+    <div class="inline">
+      <label for="f-days">{{ ask_days }}</label>
+      <span class="money"><input id="f-days" name="days" inputmode="numeric" autocomplete="off" value="{{ typed.get('days', '') }}"><span>روز</span></span>
+    </div>
+    <p class="hint">خانهٔ خالی یعنی بدون محدودیت. اگر کدی با همین نام باشد، با این مقدارها جایگزین می‌شود و شمارش مصرفش ادامه دارد.</p>
+    <div><button type="submit" class="btn">ثبت کد</button></div>
+  </form>
+</section>
+{% endif %}
+{% endif %}

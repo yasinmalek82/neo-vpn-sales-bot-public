@@ -1,0 +1,7 @@
+{# The customer's button for the plan as typed. A read: it writes nothing. The label
+   is services/store_catalog.shelf_plan_label, the function the purchase keyboard
+   calls; the warnings are the bot's own (no tab for this duration, the per-GB ladder). #}
+{% if preview.error %}<p class="alert" role="alert">{{ preview.error }}</p>
+{% elif preview.label %}<div class="tg-btn" dir="rtl">{{ preview.label }}</div>
+{% elif preview.hint %}<p class="hint">{{ preview.hint }}</p>{% endif %}
+{% for warning in preview.warnings %}<p class="alert">{{ warning }}</p>{% endfor %}

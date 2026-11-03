@@ -1,0 +1,148 @@
+{# One reseller's price sheet, the bot's «💵 قیمت‌های نمایندگی». Read: the rate, the trial
+   figures, and each ready plan's agreed price beside the retail price of the same cell
+   (services/reseller_sheet.build_sheet). Write: the bot's own controls, one form each, every
+   form carrying `seen`, what it was drawn from. The ⚠️ is computed by the service (the till's
+   quote); this page decides nothing. The role itself is shown, never switched. Names, handles
+   and plan titles are user input: autoescape only. #}
+
+{% macro notice_for(where) %}{% if notice and notice_in == where %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}{% endmacro %}
+
+{% macro tab_link(label, c, d, t, selected) %}<a href="#" class="chip" aria-pressed="{{ 'true' if selected else 'false' }}" hx-get="{{ sheet_url }}?c={{ c | urlencode }}&amp;d={{ d | urlencode }}&amp;t={{ t | urlencode }}" hx-target="#main">{{ label }}</a>{% endmacro %}
+
+{% macro number_form(field, label, value, hint=none) %}
+<form class="inline" hx-post="{{ sheet_url }}/rate/{{ field }}" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+  <input type="hidden" name="seen" value="{{ sheet.rate_token }}">
+  <input type="hidden" name="c" value="{{ sheet.category_slug }}">
+  <input type="hidden" name="d" value="{{ sheet.duration }}">
+  <input type="hidden" name="t" value="{{ sheet.tier }}">
+  <label for="v-{{ field }}">{{ label }}</label>
+  <span class="money"><input id="v-{{ field }}" name="value" inputmode="numeric" autocomplete="off" value="{{ value | toman }}"><span>{{ hint if hint else 'تومان' }}</span></span>
+  <button type="submit" class="btn">ذخیره</button>
+</form>
+{% endmacro %}
+
+<p><a href="#" class="back" hx-get="{{ list_url }}" hx-target="#main">‹ نمایندگان</a></p>
+<div class="page-head">
+  <h1>{{ sheet.name }}</h1>
+  <p class="sub">
+    <span class="pill on">نماینده</span>
+    <span class="lat">{{ sheet.handle }}</span>
+    <a href="#" class="back" hx-get="{{ customer_url }}" hx-target="#main">کارت مشتری</a>
+  </p>
+  <p class="sub hub-text">{{ sheet.status }}</p>
+</div>
+
+<section class="panel" aria-labelledby="h-custom">
+  <div class="panel-head"><h2 id="h-custom">🧩 نرخ خرید سفارشی</h2></div>
+  <p class="hint confirm-text">{{ words.custom_intro }}</p>
+  {{ notice_for('custom') }}
+  <div class="settings">
+    <div class="set">{{ number_form('gb', 'هر گیگ', sheet.per_gb) }}</div>
+    <div class="set">{{ number_form('day', 'هر روز', sheet.per_day) }}</div>
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="h-trial">
+  <div class="panel-head"><h2 id="h-trial">🧪 تست نمایندگی</h2></div>
+  <p class="hint confirm-text">{{ words.trial_intro }}</p>
+  {{ notice_for('trial') }}
+  <div class="settings">
+    <div class="set">{{ number_form('quota', 'سهمیهٔ ماهانه', sheet.trial_quota, 'تست') }}</div>
+    <div class="set">{{ number_form('tprice', 'هر تست اضافه', sheet.trial_price) }}</div>
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="h-plans">
+  <div class="panel-head"><h2 id="h-plans">🎁 پلن‌های آماده</h2></div>
+  {{ notice_for('plans') }}
+  {% if not sheet.has_plans %}
+  <p class="empty">{{ words.no_plans }}</p>
+  {% else %}
+  {% if sheet.categories | length > 1 %}
+  <div class="chips">
+    {% for cat in sheet.categories %}{{ tab_link(cat.label, cat.value, '', '', cat.selected) }}{% endfor %}
+  </div>
+  {% endif %}
+  {% if sheet.flat %}
+  <p class="hint">{{ words.flat_hint }}</p>
+  {% else %}
+  <div class="chips">
+    {% for tab in sheet.durations %}{{ tab_link(tab.label, sheet.category_slug, tab.value, sheet.tier, tab.selected) }}{% endfor %}
+  </div>
+  {% if sheet.tiers %}
+  <div class="chips">
+    {% for tab in sheet.tiers %}{{ tab_link(tab.label, sheet.category_slug, sheet.duration, tab.value, tab.selected) }}{% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {% if not sheet.cells %}
+  <p class="empty">{{ words.no_plans_tab }}</p>
+  {% else %}
+  <div class="rs-cells">
+    {% for cell in sheet.cells %}
+    <div class="rs-cell" id="cell-{{ cell.slug }}">
+      <div class="rs-head">
+        <span class="p-title">{{ cell.title }}</span>
+        <span class="num">خرده {{ cell.retail | toman }}</span>
+        <span class="num">{% if cell.agreed is not none %}نماینده {{ cell.agreed | toman }}{% else %}{{ words.cell_none }}{% endif %}</span>
+      </div>
+      {% if cell.crossed %}<p class="alert" role="status">{{ words.crossed }}</p>{% endif %}
+      <form class="inline" hx-post="{{ sheet_url }}/price" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="seen" value="{{ cell.token }}">
+        <input type="hidden" name="slug" value="{{ cell.slug }}">
+        <input type="hidden" name="c" value="{{ sheet.category_slug }}">
+        <input type="hidden" name="d" value="{{ cell.duration }}">
+        <input type="hidden" name="t" value="{{ cell.tier }}">
+        <span class="money"><input name="value" inputmode="numeric" autocomplete="off" value="{{ (cell.agreed | toman) if cell.agreed is not none else '' }}" aria-label="قیمت نماینده، {{ cell.title }}"><span>تومان</span></span>
+        <button type="submit" class="btn">ذخیره</button>
+      </form>
+      {% if cell.agreed is not none %}
+      <form class="inline" hx-post="{{ sheet_url }}/price/clear" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="seen" value="{{ cell.token }}">
+        <input type="hidden" name="slug" value="{{ cell.slug }}">
+        <input type="hidden" name="c" value="{{ sheet.category_slug }}">
+        <input type="hidden" name="d" value="{{ cell.duration }}">
+        <input type="hidden" name="t" value="{{ cell.tier }}">
+        <button type="submit" class="btn" aria-label="برگشت به قیمت خرده، {{ cell.title }}">↩️ قیمت خرده</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if sheet.cells | selectattr('agreed', 'ne', none) | list %}
+  <form class="inline" hx-post="{{ sheet_url }}/cut" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="c" value="{{ sheet.category_slug }}">
+    <input type="hidden" name="d" value="{{ sheet.duration }}">
+    <input type="hidden" name="t" value="{{ sheet.tier }}">
+    <label for="v-pct">{{ words.pct_prompt_flat if sheet.flat else words.pct_prompt }}</label>
+    <span class="money"><input id="v-pct" name="pct" inputmode="numeric" autocomplete="off"><span>٪</span></span>
+    <button type="submit" class="btn">پیش‌نمایش</button>
+  </form>
+  {% endif %}
+  {% if sheet.undo %}
+  <form class="inline" hx-post="{{ sheet_url }}/undo" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="seen" value="{{ sheet.undo.token }}">
+    <input type="hidden" name="c" value="{{ sheet.category_slug }}">
+    <input type="hidden" name="d" value="{{ sheet.duration }}">
+    <input type="hidden" name="t" value="{{ sheet.tier }}">
+    <button type="submit" class="btn">{{ words.undo_btn }}</button>
+    <span class="hint">{{ sheet.undo.when | jalali }}</span>
+  </form>
+  {% endif %}
+  {% endif %}
+  {% endif %}
+</section>
+
+{% if sheet.orphans %}
+<section class="panel" aria-labelledby="h-orphans">
+  <div class="panel-head"><h2 id="h-orphans">قیمت‌های بی‌جا</h2></div>
+  <p class="hint">این قیمت‌ها ذخیره شده‌اند ولی الان در هیچ تب فروشگاه جایی ندارند (پلن یا تبش حذف شده). تا برنگردند، چیزی را عوض نمی‌کنند.</p>
+  <ul class="ledger">
+    {% for o in sheet.orphans %}
+    <li><span class="num">{{ o.price | toman }}</span><span>{% if o.title %}{{ o.title }}{% else %}پلن حذف‌شده{% endif %} • <span class="lat">{{ o.slug }}</span> • {{ o.duration }} • {{ o.tier }}</span></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}

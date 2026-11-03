@@ -1,0 +1,23 @@
+{# The answer to «who am I?»: this person's navigation (swapped into the shell's
+   two navs out of band) and a loader for their first screen. Built from the
+   role the signature gave, so an admin link never reaches anyone else. #}
+<nav id="side" class="side" aria-label="بخش‌ها" hx-swap-oob="true">
+  <div class="brand">نئو نتورک<small>{{ nav.note }}</small></div>
+  {% for item in nav.items %}
+  <a href="#" class="navlink" data-nav hx-get="{{ item.url }}" hx-target="#main"{% if item.url == nav.first_screen %} aria-current="page"{% endif %}>
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" d="{{ item.icon }}"/></svg>
+    <span>{{ item.label }}</span>
+  </a>
+  {% endfor %}
+</nav>
+<nav id="tabbar" class="tabbar" aria-label="بخش‌ها" hx-swap-oob="true">
+  {% for item in nav.items %}
+  <a href="#" class="navlink" data-nav hx-get="{{ item.url }}" hx-target="#main"{% if item.url == nav.first_screen %} aria-current="page"{% endif %}>
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" d="{{ item.icon }}"/></svg>
+    <span>{{ item.label }}</span>
+  </a>
+  {% endfor %}
+</nav>
+<div hx-get="{{ nav.first_screen }}" hx-trigger="load" hx-target="#main" hx-swap="innerHTML">
+  <p class="empty">در حال بارگذاری…</p>
+</div>

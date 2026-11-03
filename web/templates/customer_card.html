@@ -1,0 +1,51 @@
+{# The bot's customer card, same facts (services/customer_card.py). Read-only
+   except «تغییر کیف پول». Role, ban, trial and reseller state are shown, never
+   switched here: those stay in the bot. No subscription link, ever. #}
+<p><a href="#" class="back" hx-get="/panel/customers" hx-target="#main">‹ مشتری‌ها</a></p>
+<div class="page-head">
+  <h1>{{ facts.name }}</h1>
+  <p class="sub">
+    <span class="pill{{ ' bad' if facts.is_banned else '' }}">{{ facts.status }}</span>
+    <span class="pill{{ ' on' if facts.is_reseller or facts.is_admin else '' }}">{{ facts.role }}</span>
+  </p>
+  {% if facts.is_reseller %}<p class="sub"><a href="#" class="btn" hx-get="/panel/resellers/{{ user_id }}" hx-target="#main">قیمت‌های نمایندگی</a></p>{% endif %}
+</div>
+
+<section class="panel" aria-labelledby="h-wallet">
+  <div class="panel-head">
+    <h2 id="h-wallet">کیف پول</h2>
+    <a href="#" class="btn primary" hx-get="/panel/customers/{{ user_id }}/wallet" hx-target="#main">تغییر کیف پول</a>
+  </div>
+  <dl class="kv">
+    <dt>موجودی</dt><dd class="num"><b>{{ facts.wallet }}</b></dd>
+    <dt>مجموع شارژ</dt><dd class="num">{{ facts.topped_up }}</dd>
+    <dt>مجموع خرید</dt><dd class="num">{{ facts.spent }}</dd>
+  </dl>
+  <h3 class="sub-title">آخرین تراکنش‌های کیف پول</h3>
+  {% if facts.ledger %}
+  <ul class="ledger">
+    {% for row in facts.ledger %}
+    <li><span class="num">{{ row.sign }}{{ row.amount }}</span><span>{{ row.label }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="hint">{{ no_ledger }}</p>
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="h-who">
+  <div class="panel-head"><h2 id="h-who">مشخصات</h2></div>
+  <dl class="kv">
+    <dt>یوزرنیم</dt><dd class="lat">{{ facts.handle }}</dd>
+    <dt>آیدی</dt><dd class="lat">{{ facts.telegram_id }}</dd>
+    <dt>عضویت</dt><dd class="num">{{ facts.joined }}</dd>
+    <dt>آخرین فعالیت</dt><dd>{{ facts.last_seen }}</dd>
+    <dt>تست</dt><dd>{{ facts.trial }}</dd>
+    <dt>سفارش‌ها</dt><dd class="num">{{ facts.orders_total }} (پرداخت‌شده: {{ facts.orders_paid }})</dd>
+    <dt>آخرین سفارش</dt><dd class="num">{{ facts.last_order }}</dd>
+    <dt>سرویس‌ها</dt><dd class="num">{{ facts.services_count }}</dd>
+    <dt>زیرمجموعه</dt><dd class="num">{{ facts.referrals }}</dd>
+    <dt>معرف</dt><dd>{{ facts.referrer }}</dd>
+    <dt>کد دعوت</dt><dd class="lat">{{ facts.referral_code }}</dd>
+  </dl>
+</section>

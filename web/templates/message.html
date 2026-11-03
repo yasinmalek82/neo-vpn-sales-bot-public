@@ -1,0 +1,8 @@
+{# One fixed line (a result or a refusal) and a way back. Nothing here is data. #}
+<div class="page-head"><h1>{{ message }}</h1></div>
+{% if note is defined and note %}<p class="sub">{{ note }}</p>{% endif %}
+{% if back_user_id is defined and back_user_id %}
+<p class="actions"><a href="#" class="btn primary" hx-get="/panel/customers/{{ back_user_id }}" hx-target="#main">کارت مشتری</a></p>
+{% else %}
+<p class="actions"><a href="#" class="btn" hx-get="/panel/customers" hx-target="#main">مشتری‌ها</a></p>
+{% endif %}

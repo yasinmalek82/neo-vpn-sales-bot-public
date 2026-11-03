@@ -1,0 +1,42 @@
+{# «داشبورد نمایندگی»: a shop's purchases, trial quota, customers and wallet, read-only. #}
+<div class="page-head">
+  <h1>داشبورد نمایندگی</h1>
+  <p class="sub">همه‌چیز اینجا فقط خوندنیه. خرید و تمدید توی ربات انجام می‌شه.</p>
+</div>
+
+<h2 class="group-title">خریدهای من</h2>
+<p class="sub">سرویس‌هایی که فعال شدن و پولشون پرداخت شده. تست رایگان شمرده نمی‌شه. مبلغ‌ها به تومان.</p>
+<div class="kpis">
+  {% for w in (dash.today, dash.month, dash.total) %}
+  <div class="kpi">
+    <span>{{ w.label_fa }}</span>
+    <b class="num">{{ w.revenue_toman | toman }}</b>
+    <span class="num">{{ w.orders | fa }} سرویس</span>
+  </div>
+  {% endfor %}
+</div>
+
+<h2 class="group-title">تست رایگان</h2>
+<section class="panel">
+  {% if dash.trial.quota > 0 %}<p class="line">🎟 تست رایگان این ماه: <span class="num">{{ dash.trial.used | fa }} از {{ dash.trial.quota | fa }}</span></p>{% endif %}
+  {% for line in dash.trial_note.split("\n") %}<p class="line">{{ line }}</p>{% endfor %}
+</section>
+
+<h2 class="group-title">مشتری‌های من</h2>
+{% if dash.page.total > 0 %}
+<p class="sub num">{{ dash.page.total | fa }} سرویس • نمایش {{ (dash.page.offset + 1) | fa }} تا {{ (dash.page.offset + dash.services | length) | fa }}</p>
+<section class="panel">
+  {% with services = dash.services %}{% include "_services.html" %}{% endwith %}
+</section>
+<div class="pager">
+  {% if dash.page.has_prev %}<a href="#" class="btn" hx-get="/panel/me/reseller?offset={{ dash.page.prev_offset }}" hx-target="#main">قبلی</a>{% endif %}
+  {% if dash.page.has_next %}<a href="#" class="btn" hx-get="/panel/me/reseller?offset={{ dash.page.next_offset }}" hx-target="#main">بعدی</a>{% endif %}
+</div>
+{% else %}
+<p class="empty">هنوز سرویسی برای مشتری‌هات ثبت نشده.</p>
+{% endif %}
+
+<h2 class="group-title">کیف پول</h2>
+<section class="panel">
+  {% with wallet = dash.wallet %}{% include "_wallet.html" %}{% endwith %}
+</section>

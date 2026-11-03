@@ -1,0 +1,55 @@
+{# The bot's «📣 پیام‌های بازاریابی»: the same four campaigns with the same state, description
+   and offer line (services/marketing_view.campaign_cards composes them for both). Settings
+   only: this page sends nothing and promises no customer anything. A control is drawn only for
+   a store owner; the server refuses anyone else. Every form carries `seen`, what the page was
+   drawn from, and the server refuses a form whose `seen` is no longer true. #}
+
+{% macro form_open(campaign, action, cls='') %}<form class="{{ cls }}" hx-post="{{ marketing_url }}/{{ campaign }}/{{ action }}" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button"><input type="hidden" name="seen" value="{{ token }}">{% endmacro %}
+
+<div class="page-head">
+  <h1>پیام‌های بازاریابی</h1>
+  <p class="sub hub-text">{{ intro }}{% if read_only_hint %}
+
+{{ read_only_hint }}{% endif %}</p>
+</div>
+
+<section class="panel" aria-labelledby="h-camps">
+  <div class="panel-head"><h2 id="h-camps" class="vh">{{ head }}</h2></div>
+  {% if notice and not notice_campaign %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}
+  <div class="camps">
+    {% for c in cards %}
+    <div class="camp" id="camp-{{ c.campaign }}">
+      <div class="camp-title">{{ c.plain_title }}</div>
+      {% if not can_edit %}<div class="camp-state">{{ c.state }}</div>{% endif %}
+      <div class="camp-what">{{ c.what }}</div>
+      {% if c.offer_line %}<div class="camp-offer">{{ c.offer_line }}</div>{% endif %}
+      {% if notice and notice_campaign == c.campaign %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}
+      {% if can_edit %}
+      <div class="set">
+        {{ form_open(c.campaign, 'toggle', 'row') }}
+          <input type="hidden" name="to" value="{{ 'off' if c.on else 'on' }}">
+          <span>{{ 'روشن' if c.on else 'خاموش' }}</span>
+          <button type="submit" class="sw" role="switch" aria-checked="{{ 'true' if c.on else 'false' }}" aria-label="روشن یا خاموش کردن {{ c.plain_title }}"><i></i></button>
+        </form>
+        {% if c.can_offer %}
+        {{ form_open(c.campaign, 'percent', 'inline') }}
+          <label for="f-pct-{{ c.campaign }}">{{ c.plain_percent_label }}</label>
+          <span class="money"><input id="f-pct-{{ c.campaign }}" name="percent" inputmode="numeric" autocomplete="off" value="{{ c.percent | fa }}"><span>٪</span></span>
+          <button type="submit" class="btn">ذخیره</button>
+        </form>
+        <p class="hint">{{ percent_hint }}</p>
+        {% if c.percent > 0 %}
+        {{ form_open(c.campaign, 'hours', 'inline') }}
+          <label for="f-hrs-{{ c.campaign }}">{{ c.hours_label }}</label>
+          <span class="money"><input id="f-hrs-{{ c.campaign }}" name="hours" inputmode="numeric" autocomplete="off" value="{{ c.hours | fa }}"><span>ساعت</span></span>
+          <button type="submit" class="btn">ذخیره</button>
+        </form>
+        <p class="hint">{{ hours_hint }}</p>
+        {% endif %}
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>

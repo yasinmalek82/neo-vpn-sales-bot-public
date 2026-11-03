@@ -1,0 +1,435 @@
+/* Panel look. Tokens are BRAND.md section 7: ink, surface, signal, muted,
+   paper. Flat colour, no gradients. The accent (signal) marks one thing per
+   screen: the current section in the navigation.
+   Fonts: Vazirmatn is vendored (fonts/, see NOTICE) and nothing is fetched
+   from a CDN (users are in Iran). Space Grotesk and IBM Plex Sans, which
+   BRAND.md names for Latin, are not vendored: Latin falls to Vazirmatn's own. */
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/panel/static/fonts/Vazirmatn-wght.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  color-scheme: dark;
+  --ink: #0B0F14;
+  --surface: #131C25;
+  --raise: #1B2732;
+  --line: #263442;
+  --signal: #2EE6A0;
+  --muted: #8FA3B2;
+  --paper: #F2F4F1;
+  --warn: #F0B55A;
+  --fa: "Vazirmatn", "Segoe UI", Tahoma, "Noto Naskh Arabic", system-ui, sans-serif;
+  --r: 10px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--fa);
+  font-size: 14px;
+  line-height: 1.7;
+}
+h1, h2, p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* shell: (a container cannot restyle itself, so .shell is the row)
+   bottom tabs on a phone, a side column when the window is wide */
+.app { container-type: inline-size; container-name: app; display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+.shell { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.main { flex: 1; min-width: 0; padding: 16px 16px 28px; }
+.side { display: none; }
+.tabbar {
+  display: flex;
+  position: sticky;
+  bottom: 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.tabbar .navlink {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.navlink[aria-current="page"] { color: var(--paper); font-weight: 700; }
+.ico { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+@container app (min-width: 820px) {
+  .shell { flex-direction: row; }
+  .tabbar { display: none; }
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 188px;
+    flex: none;
+    padding: 18px 12px;
+    border-inline-end: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .brand { padding: 0 10px 14px; font-weight: 700; font-size: 15px; }
+  .brand small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+  .side .navlink { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--r); color: var(--muted); }
+  .side .navlink:hover { color: var(--paper); }
+  .side .navlink[aria-current="page"] { background: var(--raise); color: var(--paper); }
+  .main { padding: 24px 28px 40px; max-width: 980px; }
+}
+
+/* page */
+.page-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px; }
+h1 { font-size: 20px; line-height: 1.4; text-wrap: balance; }
+h2 { font-size: 15px; line-height: 1.5; }
+.sub { color: var(--muted); font-size: 13px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.group-title { margin: 20px 0 10px; }
+
+.panel { background: var(--surface); border-radius: 14px; padding: 14px; }
+.panel-head { display: flex; align-items: center; margin-bottom: 8px; }
+
+/* sales rows: two lines on a phone, one line when there is room */
+.list-head { display: none; }
+.row-sale {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label amt" "count avg";
+  gap: 2px 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.r-label { grid-area: label; font-weight: 700; }
+.r-amt { grid-area: amt; justify-self: end; font-weight: 700; }
+.r-count { grid-area: count; color: var(--muted); font-size: 13px; }
+.r-avg { grid-area: avg; justify-self: end; color: var(--muted); font-size: 13px; }
+@container app (min-width: 640px) {
+  .list-head, .row-sale {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 7rem minmax(0, 1.4fr);
+    gap: 12px;
+    align-items: center;
+  }
+  .list-head { display: grid; font-size: 12px; color: var(--muted); padding-bottom: 8px; }
+  .row-sale { grid-template-areas: "label amt count avg"; }
+  .r-amt, .r-avg { justify-self: start; }
+  .r-count, .r-avg { font-size: 14px; color: var(--paper); }
+}
+
+/* figures */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.kpi { background: var(--surface); border-radius: 14px; padding: 12px 14px; }
+.kpi span { display: block; font-size: 12px; color: var(--muted); }
+.kpi b { display: block; font-size: 20px; line-height: 1.5; }
+
+.alert { margin-top: 20px; border: 1px solid var(--warn); border-radius: var(--r); padding: 10px 14px; color: var(--warn); }
+.calm { margin-top: 20px; color: var(--muted); }
+
+/* controls */
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.lat { font-family: "Space Grotesk", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; direction: ltr; unicode-bidi: isolate; }
+.btn { min-height: 40px; padding: 6px 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--raise); }
+.btn:hover { border-color: var(--muted); }
+.btn[disabled] { opacity: .6; cursor: progress; }
+.actions { margin-top: 12px; }
+.money { display: flex; align-items: center; gap: 6px; min-height: 42px; min-width: 0; padding-inline: 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--ink); }
+.money:focus-within { border-color: var(--signal); }
+.money input { flex: 1; min-width: 0; width: 100%; border: 0; background: none; padding: 6px 0; font-size: 16px; font-variant-numeric: tabular-nums; outline: 0; }
+.money span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.pill { display: inline-block; font-size: 12px; line-height: 1.6; padding: 1px 9px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.warn { color: var(--warn); border-color: var(--warn); }
+.cl { display: block; color: var(--muted); font-size: 12px; }
+.note { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px; color: var(--paper); }
+.gbody .alert { margin-top: 0; }
+.hub-text { white-space: pre-line; }
+
+/* store: group chips on a phone, a column on a wide window */
+.store { display: flex; flex-direction: column; gap: 16px; }
+.groups { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.gbtn { flex: none; display: flex; flex-direction: column; align-items: flex-start; text-align: start; padding: 8px 14px; min-width: 112px; border-radius: var(--r); border: 1px solid var(--line); background: none; color: var(--muted); }
+.gbtn[aria-pressed="true"] { background: var(--surface); border-color: var(--muted); color: var(--paper); }
+.gname { font-weight: 700; line-height: 1.5; }
+.gname small { font-weight: 400; color: var(--muted); margin-inline-end: 6px; }
+.gmeta { font-size: 12px; color: var(--muted); }
+.gbody { container-type: inline-size; container-name: gb; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.facts { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.plans { display: flex; flex-direction: column; }
+.plan-head { display: none; }
+.plan { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "label sale" "price price" "users users"; gap: 10px 12px; align-items: center; padding: 14px 0; border-top: 1px solid var(--line); }
+.plan:first-child { border-top: 0; padding-top: 4px; }
+.p-label { grid-area: label; min-width: 0; }
+.p-price { grid-area: price; }
+.p-users { grid-area: users; }
+.p-sale { grid-area: sale; justify-self: end; }
+.p-title { display: block; font-weight: 700; }
+.p-slug { display: block; font-size: 12px; color: var(--muted); text-align: right; overflow-wrap: anywhere; }
+.plan.off .p-title { color: var(--muted); }
+.price-form { display: flex; align-items: center; gap: 8px; }
+.price-form .money { flex: 1; }
+@container app (min-width: 820px) {
+  .store { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .groups { flex-direction: column; overflow: visible; padding: 0; }
+  .gbtn { min-width: 0; align-items: stretch; }
+}
+@container gb (min-width: 640px) {
+  .cl { display: none; }
+  .plan-head, .plan { grid-template-columns: minmax(0, 1.4fr) 6rem minmax(12rem, 16rem) 5rem; grid-template-areas: "label users price sale"; gap: 12px; }
+  .plan-head { display: grid; font-size: 12px; color: var(--muted); padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .plan { padding: 10px 0; }
+  .plan:first-child { padding-top: 10px; }
+  .p-sale { justify-self: start; }
+}
+
+/* Group settings: the bot's four sections (🛒 🎟 🖥 ✏️). */
+.settings { display: grid; gap: 0; }
+.set { padding: 14px 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+.set:first-child { border-top: 0; padding-top: 0; }
+.set h3 { font-size: 13px; color: var(--muted); font-weight: 500; margin: 0; }
+.set h4 { font-size: 13px; font-weight: 700; margin: 0; }
+.set label { display: block; font-size: 13px; color: var(--muted); }
+.set .note, .set .alert { white-space: pre-line; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; }
+.inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.inline label { flex: 1 1 100%; }
+.inline .money { flex: 1 1 8rem; }
+.hint { font-size: 12px; color: var(--muted); }
+.subset { display: flex; flex-direction: column; gap: 10px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.tabs li { display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+.tabs form { margin: 0; }
+.tabs .btn { min-height: 32px; padding: 2px 8px; border: 0; background: none; }
+.sw { flex: none; width: 42px; height: 24px; padding: 2px; border-radius: 99px; border: 1px solid var(--line); background: var(--raise); display: flex; justify-content: flex-start; }
+.sw i { width: 18px; height: 18px; border-radius: 50%; background: var(--muted); }
+.sw[aria-checked="true"] { justify-content: flex-end; background: var(--signal); border-color: var(--signal); }
+.sw[aria-checked="true"] i { background: var(--ink); }
+.btn.danger { border-color: var(--warn); color: var(--warn); }
+.confirm-text { white-space: pre-line; }
+/* customers: search, list, card, wallet form */
+.lat { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+.hint { font-size: 12px; color: var(--muted); }
+.back { color: var(--muted); font-size: 13px; }
+.toolbar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.toolbar input[type="search"], .field input[type="text"] {
+  width: 100%; min-height: 42px; padding: 6px 12px; font: inherit; font-size: 16px;
+  color: var(--paper); background: var(--ink); border: 1px solid var(--line); border-radius: var(--r);
+}
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 2px 12px;
+  border-radius: 99px; border: 1px solid var(--line); color: var(--muted);
+}
+.chip[aria-pressed="true"] { color: var(--paper); border-color: var(--paper); background: var(--raise); }
+.pill {
+  display: inline-block; font-size: 12px; line-height: 1.6; padding: 1px 9px;
+  border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+}
+.pill.bad { color: #EF7A6D; border-color: #EF7A6D; }
+.pill.on { color: var(--paper); }
+.rows { display: flex; flex-direction: column; }
+.rowbtn {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px;
+  padding: 12px 0; border-top: 1px solid var(--line);
+}
+.rowbtn:hover .c-name { color: var(--signal); }
+.c-who { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.c-name { font-weight: 700; overflow-wrap: anywhere; }
+.c-id { justify-self: end; font-size: 12px; color: var(--muted); }
+.c-sv, .c-wallet { grid-column: 1 / -1; color: var(--muted); font-size: 13px; }
+.c-wallet { color: var(--paper); }
+.cust-head { display: none; }
+@container app (min-width: 640px) {
+  .cust-head { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; font-size: 12px; color: var(--muted); padding-bottom: 8px; }
+  .rowbtn { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: center; }
+  .c-id { justify-self: start; font-size: 13px; }
+  .c-sv, .c-wallet { grid-column: auto; font-size: 14px; }
+}
+.pager, .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 40px;
+  padding: 6px 14px; font: inherit; color: var(--paper); cursor: pointer;
+  border-radius: var(--r); border: 1px solid var(--line); background: var(--raise);
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--signal); border-color: var(--signal); color: var(--ink); font-weight: 700; }
+.panel + .panel { margin-top: 12px; }
+.panel-head h2 { margin-inline-end: auto; }
+.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; margin: 0; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.sub-title { margin: 14px 0 6px; font-size: 13px; color: var(--muted); font-weight: 500; }
+.ledger { list-style: none; margin: 0; padding: 0; }
+.ledger li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; }
+.field > span, .field legend { font-size: 12px; color: var(--muted); padding: 0; }
+.opt { display: inline-flex; align-items: center; gap: 8px; margin-inline-end: 16px; }
+.err { color: #EF7A6D; font-size: 13px; }
+/* personal pages: a customer's services and wallet, a reseller's dashboard */
+.sub-title { margin: 14px 0 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.svc { padding: 12px 0; border-top: 1px solid var(--line); }
+.svc:first-child { border-top: 0; padding-top: 0; }
+.svc-name { margin: 0 0 4px; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.line { margin: 0; color: var(--paper); }
+.line.warn { color: var(--warn); }
+.bar { white-space: nowrap; }
+.entries { list-style: none; margin: 0; padding: 0; }
+.entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label amt" "date date";
+  gap: 0 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.e-label { grid-area: label; }
+.e-amt { grid-area: amt; justify-self: end; font-weight: 700; }
+.e-date { grid-area: date; color: var(--muted); font-size: 12px; }
+.pager { display: flex; gap: 10px; margin-top: 12px; }
+.btn { background: var(--raise); border-radius: var(--r); padding: 6px 14px; }
+.tabbar:empty, .side:empty { display: none; }
+
+/* Promo codes and marketing campaigns: a list of cards, each with its own small forms. */
+.promos, .camps { display: flex; flex-direction: column; }
+.promo, .camp { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--line); }
+.promo:first-child, .camp:first-child { border-top: 0; padding-top: 4px; }
+.promo.off .pr-code { color: var(--muted); }
+.pr-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-weight: 700; }
+.pr-rules, .pr-usage { color: var(--muted); font-size: 13px; }
+.pr-actions { display: flex; align-items: center; gap: 16px; margin-top: 4px; }
+.pr-actions .row { gap: 10px; }
+.check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--muted); }
+.panel + .panel { margin-top: 16px; }
+.camp-title { font-weight: 700; }
+.camp-what, .camp-offer { color: var(--muted); font-size: 13px; }
+.camp .set { padding: 4px 0 0; border-top: 0; }
+
+/* Plan editor: the forms on one side, the customer's button on the other. */
+.pe { display: flex; flex-direction: column; gap: 16px; }
+.pe-forms { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pe-side { align-self: stretch; }
+.pe-new { display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.fld { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.fld.chk { flex-direction: row; align-items: center; gap: 8px; }
+.tg-btn { text-align: center; padding: 10px 12px; border-radius: 8px; background: var(--raise); font-weight: 500; overflow-wrap: anywhere; }
+.btn.primary { background: var(--signal); color: var(--ink); border-color: var(--signal); }
+.order-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; align-items: center; margin: 0; }
+@container app (min-width: 820px) {
+  .pe { display: grid; grid-template-columns: minmax(0, 1fr) 280px; align-items: start; }
+}
+.panel-head { justify-content: space-between; gap: 12px; }
+.newgroup select { min-height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r); background: var(--ink); font: inherit; color: inherit; }
+
+/* The change log (store_changes.html): a mark, the note, how long ago, an undo. */
+.changes { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.change { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+.change .desc { flex: 1 1 12rem; overflow-wrap: anywhere; }
+.change .when { color: var(--muted); font-size: 12px; }
+.change.current { border-color: var(--paper); }
+
+/* resellers: one cell per ready plan, the retail price beside the agreed one */
+.rs-cells { display: flex; flex-direction: column; margin-block: 12px; }
+.rs-cell { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
+.rs-cell:first-child { border-top: 0; }
+.rs-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.rs-head .p-title { flex: 1 1 100%; }
+.rs-cell .alert { margin-top: 0; }
+
+/* Touch and reading pass (2026-10-11). Measured in a 360–430px phone and a wide window.
+   - Seven sections do not fit a narrow phone on one line: the label wrapped («کدهای تخفیف»)
+     and below 350px the last tab was cut off. One line each; a phone too narrow for all
+     of them scrolls the bar instead of cutting it.
+   - A switch (24px), a back link (16px), a radio (13px) and the 🗑 of a duration were
+     smaller than a finger: 40px is the floor for anything tapped.
+   - iOS zooms the whole page when a control under 16px takes focus: selects are 16px.
+   - Latin values in a facts list (@name, an id) hugged the far edge, away from their label. */
+.tabbar { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; z-index: 2; }
+.tabbar::-webkit-scrollbar { display: none; }
+.tabbar .navlink { flex: 1 0 auto; justify-content: center; min-height: 54px; padding-inline: 4px; font-size: 11px; white-space: nowrap; }
+.back { display: inline-block; padding-block: 12px; margin-block: -12px; }
+.row { min-height: 40px; }
+.sw { position: relative; }
+.sw::after { content: ""; position: absolute; inset: -8px; }
+.tabs .btn { min-width: 40px; min-height: 40px; }
+input[type="radio"], input[type="checkbox"] { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--signal); }
+.opt, .check, .fld.chk { min-height: 40px; }
+.check { align-items: center; }
+select { font-size: 16px; }
+.kv .lat { text-align: right; }
+
+/* store head: the change log and «new group» side by side; the form opens under them */
+.more > summary { list-style: none; width: fit-content; }
+.more > summary::-webkit-details-marker { display: none; }
+.more[open] { flex: 1 1 100%; }
+.more[open] > summary { border-color: var(--muted); margin-bottom: 8px; }
+.newgroup { max-width: 32rem; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); }
+.newgroup label { font-size: 13px; color: var(--muted); }
+.newgroup select { flex: 1 1 8rem; font-size: 16px; }
+.actions + .store { margin-top: 16px; }
+.groups { scrollbar-width: none; }
+.groups::-webkit-scrollbar { display: none; }
+
+/* Details pass (2026-10-11), against the taste checklist: every state, one pattern per job.
+   - A press is felt: anything tapped sinks a pixel.
+   - Radios and checkboxes are drawn in the panel's own colours, not the browser's.
+   - A placeholder is quieter than a typed value and still readable.
+   - Three figures in a two-column row left one alone: an odd set gives its first the full row.
+   - A row that opens a screen carries a chevron; a link inside a line of text is underlined.
+   - A switch already says on or off: the state line above it is for read-only viewers.
+   - On a wide window a ledger line keeps its amount beside its label. */
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.btn, .chip, .gbtn, .sw, .rowbtn, .navlink { transition: transform .08s ease-out; }
+.btn:active, .chip:active, .gbtn:active, .sw:active { transform: translateY(1px); }
+.rowbtn:active .c-name, .navlink:active { color: var(--signal); }
+@media (prefers-reduced-motion: reduce) { .btn, .chip, .gbtn, .sw, .rowbtn, .navlink { transition: none; } }
+input[type="radio"], input[type="checkbox"] { appearance: none; -webkit-appearance: none; display: inline-grid; place-content: center; border: 1.5px solid var(--muted); background: var(--ink); cursor: pointer; }
+input[type="radio"] { border-radius: 50%; }
+input[type="checkbox"] { border-radius: 6px; }
+input[type="radio"]::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--signal); transform: scale(0); }
+input[type="checkbox"]::before { content: ""; width: 11px; height: 6px; margin-top: -3px; border: solid var(--ink); border-width: 0 0 2px 2px; transform: rotate(-45deg) scale(0); }
+input[type="radio"]:checked, input[type="checkbox"]:checked { border-color: var(--signal); }
+input[type="checkbox"]:checked { background: var(--signal); }
+input[type="radio"]:checked::before { transform: scale(1); }
+input[type="checkbox"]:checked::before { transform: rotate(-45deg) scale(1); }
+::placeholder { color: var(--muted); opacity: .75; }
+@container app (max-width: 520px) {
+  .kpis { grid-template-columns: 1fr 1fr; }
+  .kpis > :first-child:nth-last-child(odd) { grid-column: 1 / -1; }
+}
+.rowbtn.go { position: relative; padding-inline-end: 24px; }
+.rowbtn.go::after { content: ""; position: absolute; inset-inline-end: 4px; top: 50%; width: 8px; height: 8px; border: solid var(--muted); border-width: 0 0 1.5px 1.5px; transform: translateY(-50%) rotate(45deg); }
+.sub .back { text-decoration: underline; text-underline-offset: 4px; }
+@container app (min-width: 640px) {
+  .ledger li { justify-content: flex-start; gap: 16px; }
+  .ledger li > :first-child { min-width: 9rem; }
+}
+
+/* A request in flight: a thin line on top, so a tap on a slow network is seen to have landed.
+   Paper, not signal: the accent stays the mark of the current section. */
+html.busy::before { content: ""; position: fixed; z-index: 3; top: 0; left: 0; right: 0; height: 2px; background: var(--paper); transform-origin: right; animation: busy 1.1s ease-in-out .15s infinite both; }
+@keyframes busy { 0% { transform: scaleX(0); } 60% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { html.busy::before { animation: none; } }
+
+/* An emoji of the bot's text, drawn by panel.js as a line icon in the navigation's stroke.
+   Tone only where the emoji carried one: done, refused, warning. */
+.em { display: inline-block; flex: none; width: 1.15em; height: 1.15em; vertical-align: -.22em; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.em.ok { color: var(--signal); }
+/* ❌ is the bot's word for «off» far more often than for «refused»: quiet, not red. */
+.em.bad { color: var(--muted); }
+.em.warn { color: var(--warn); }
+.btn .em { margin-inline-end: 2px; }
+.btn.primary .em, .btn.danger .em { color: inherit; }
+
+/* Panel-group picker rows: `.set label` is block, a checkbox row is flex; name in text colour, id muted. */
+.set label.check { display: flex; color: var(--paper); font-size: 14px; }
+.check .lat { color: var(--muted); font-size: 12px; margin-inline-start: auto; }
+/* The picker's save button is a button, not a bar: it keeps its own width like every other save. */
+form.subset > .btn { align-self: flex-start; }

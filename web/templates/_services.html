@@ -1,0 +1,15 @@
+{# One card per service. No link, QR or panel username: the item type has no field for them. #}
+{% for s in services %}
+<article class="svc">
+  <h3 class="svc-name">{{ s.emoji }} {{ s.name }}</h3>
+  {% if s.expiring_soon %}<p class="line warn">⚠️ {{ expiring_note }}</p>{% endif %}
+  {% if s.live.from_panel %}<p class="line">🚦 وضعیت: {{ s.live.status | status_fa }}</p>{% endif %}
+  <p class="line">📅 انقضا: <span class="num">{{ s.live.expire | jalali }}</span></p>
+  {% if s.live.expire %}<p class="line">⏳ زمان باقی‌مانده: <span class="num">{{ s.live.expire | time_left }}</span></p>{% endif %}
+  {% if s.live.from_panel %}
+  <p class="line">📦 حجم مصرف‌شده: <span class="num">{{ s.live.used_traffic | gb }} گیگ</span></p>
+  <p class="line">📦 سقف حجم: <span class="num">{{ s.live.data_limit | limit_gb }}</span></p>
+  <p class="line">📊 مصرف حجم: <span class="num bar">{{ s.live.used_traffic | traffic_bar(s.live.data_limit) }}</span></p>
+  {% endif %}
+</article>
+{% endfor %}

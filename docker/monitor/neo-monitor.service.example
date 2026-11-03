@@ -1,0 +1,30 @@
+# EXAMPLE ONLY: review paths, target identity, image ID and live scope before installation.
+[Unit]
+Description=Independent NEO runtime observer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=neo-monitor
+Group=neo-monitor
+StateDirectory=neo-monitor
+StateDirectoryMode=0700
+UMask=0077
+# Root-owned 0600, outside the application checkout; used only after adding --notify.
+EnvironmentFile=-/etc/neo-monitor/telegram.env
+# Replace the placeholder with the approved docker inspect .Image value (sha256 image ID).
+# Add --sudo only for an explicitly approved existing target policy requiring sudo -n.
+# Add --notify only after separate explicit approval of the exact bot/private owner route.
+ExecStart=/usr/bin/python3 /opt/neo-monitor/monitor_runtime.py --probe --ssh-target observer@host.example --ssh-key /etc/neo-monitor/id_ed25519 --known-hosts /etc/neo-monitor/known_hosts --container neo-bot --expected-image sha256:0000000000000000000000000000000000000000000000000000000000000000 --state /var/lib/neo-monitor/state.json
+TimeoutStartSec=90s
+# An observed outage is an expected completed probe; internal/notification errors remain failures.
+SuccessExitStatus=1
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+
+[Install]
+WantedBy=multi-user.target

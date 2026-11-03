@@ -1,0 +1,23 @@
+{# Step 1 of the wallet change: amount and direction. Posting it only checks
+   the amount and shows the confirm page; nothing is written. #}
+<p><a href="#" class="back" hx-get="/panel/customers/{{ user_id }}" hx-target="#main">‹ کارت مشتری</a></p>
+<div class="page-head">
+  <h1>تغییر کیف پول</h1>
+  <p class="sub">موجودی فعلی: <b class="num">{{ balance }}</b></p>
+</div>
+<form class="panel stack" hx-post="/panel/customers/{{ user_id }}/wallet/confirm" hx-target="#main">
+  <fieldset class="field">
+    <legend>نوع تغییر</legend>
+    <label class="opt"><input type="radio" name="direction" value="add"{% if direction != 'deduct' %} checked{% endif %}> شارژ</label>
+    <label class="opt"><input type="radio" name="direction" value="deduct"{% if direction == 'deduct' %} checked{% endif %}> کسر</label>
+  </fieldset>
+  <label class="field">
+    <span>مبلغ به تومان</span>
+    <input type="text" name="amount" value="{{ amount }}" inputmode="numeric" autocomplete="off" maxlength="64" required>
+  </label>
+  {% if error %}<p class="err" role="alert">{{ error }}</p>{% endif %}
+  <div class="actions">
+    <button type="submit" class="btn primary">ادامه</button>
+    <a href="#" class="btn" hx-get="/panel/customers/{{ user_id }}" hx-target="#main">انصراف</a>
+  </div>
+</form>

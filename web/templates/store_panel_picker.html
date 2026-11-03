@@ -1,0 +1,16 @@
+{# The panel's own groups as checkboxes, for one group's panel-group field. A read: it
+   writes nothing. The form posts to the route the typed box posts to, with the same
+   fields (`ids`, once per checked group, and the page's `version`), so the server
+   cannot tell the two forms apart. A group the panel no longer lists is still a row,
+   checked and named «در پنل نیست». The panel not answering is the bot's own one line;
+   the typed box above it stays. #}
+{% if unreachable %}<p class="hint" role="status">{{ unreachable_line }}</p>
+{% else %}
+<form class="subset" hx-post="{{ post_url }}" hx-target="#main" hx-swap="innerHTML show:#sec-panel:top" hx-disabled-elt="find button">
+  <input type="hidden" name="version" value="{{ version }}">
+  {% for gid, name, off in rows %}
+  <label class="check"><input type="checkbox" name="ids" value="{{ gid }}"{% if gid in selected %} checked{% endif %}><span>{{ name }}{% if off %} ⛔{% endif %}</span><span class="lat">{{ gid }}</span></label>
+  {% endfor %}
+  <button type="submit" class="btn primary">ذخیره</button>
+</form>
+{% endif %}

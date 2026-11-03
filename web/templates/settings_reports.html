@@ -1,0 +1,22 @@
+{# «📡 گروه گزارش», read-only: the bot's status block and its topic marks. #}
+<p><a href="#" class="back" hx-get="{{ settings_url }}" hx-target="#main">‹ تنظیمات</a></p>
+<div class="page-head">
+  <h1>📡 گروه گزارش</h1>
+  <p class="sub">فقط خواندنی. وصل‌کردن یا عوض‌کردن گروه و ساخت تاپیک‌ها از ربات است.</p>
+</div>
+<section class="panel" aria-labelledby="h-reports">
+  <div class="panel-head"><h2 id="h-reports">وضعیت</h2></div>
+  {% if not view.attached %}
+  <p>{{ view.line }}</p>
+  {% else %}
+  <dl class="kv">
+    <dt>گروه</dt><dd><b>{{ view.title }}</b></dd>
+    <dt>وضعیت گزارش‌دهی</dt><dd>{{ view.state }}</dd>
+    <dt>تاپیک آماده</dt><dd class="num">{{ view.ready }}</dd>
+  </dl>
+  <ul class="ledger">
+    {% for topic in view.topics %}<li><span>{{ topic.title }}</span><span>{{ topic.mark }}</span></li>{% endfor %}
+  </ul>
+  <p class="hint">⚪️ تنظیم‌نشده • 🟡 تنظیم‌شده ولی تست‌نشده • ✅ آماده</p>
+  {% endif %}
+</section>

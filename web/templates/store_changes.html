@@ -1,0 +1,31 @@
+{# The bot's «تغییرات فروشگاه»: the same entries, newest first, the same notes
+   (services/store_changes.py composes the rows for both). A note is the owner's
+   own typing (a plan or group title): Jinja escapes it, never `|safe`. An undo is
+   a form only for a store owner, and only for an entry that has a state before
+   it; it asks first (store_confirm.html) and then undoes. #}
+<p><a href="#" class="back" hx-get="{{ store_url }}" hx-target="#main">‹ فروشگاه</a></p>
+<div class="page-head">
+  <h1>تغییرات فروشگاه</h1>
+</div>
+{% if notice %}<p class="{{ 'alert' if notice_is_error else 'note' }} confirm-text" role="status">{{ notice }}</p>{% endif %}
+{% if not rows %}
+<p class="note">{{ empty }}</p>
+{% else %}
+<ul class="changes" aria-label="تغییرات فروشگاه">
+  {% for row in rows %}
+  <li class="change{{ ' current' if row.is_current else '' }}">
+    <span class="mark" aria-hidden="true">{{ row.marker }}</span>
+    <span class="desc">{{ row.description }}</span>
+    <span class="when num">{{ row.when | fa }}</span>
+    {% if can_undo and row.can_undo %}
+    <form class="inline" hx-post="{{ changes_url }}/{{ row.version_id }}/undo" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="version" value="{{ version }}">
+      <button type="submit" class="btn" aria-label="برگرداندن: {{ row.description }}">↩️ برگردان</button>
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+<p class="note hub-text">{{ hint }}</p>
+{% if not can_undo %}<p class="note">{{ read_only }}</p>{% endif %}
+{% endif %}

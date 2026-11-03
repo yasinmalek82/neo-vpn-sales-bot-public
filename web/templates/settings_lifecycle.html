@@ -1,0 +1,61 @@
+{# «🗓 هشدار و حذف سرویس»: the bot's status block, then one form per number and the
+   three mode buttons. Every word and value is composed in services/lifecycle_view.py;
+   the numbers' ranges are checked by services/lifecycle_settings.py. Only the store
+   owner gets a form; another admin reads. The rehearsal run, the preview and the
+   deletion list are in the bot. #}
+{% macro note_for(name) %}{% if notice and notice_field == name %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}{% endmacro %}
+
+<p><a href="#" class="back" hx-get="{{ settings_url }}" hx-target="#main">‹ تنظیمات</a></p>
+<div class="page-head">
+  <h1>🗓 هشدار و حذف سرویس</h1>
+  <p class="sub">پیش‌نمایش، فهرست حذف و تأییدش، و اجرای «تمرین» از ربات است.</p>
+</div>
+{% if notice and not notice_field %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}
+
+<section class="panel" aria-labelledby="h-status">
+  <div class="panel-head"><h2 id="h-status">وضعیت</h2></div>
+  <dl class="kv">
+    {% for f in view.fields %}<dt>{{ f.label }}</dt><dd>{{ f.value }}</dd>{% endfor %}
+    <dt>حذف خودکار</dt><dd>{{ view.mode_name }}</dd>
+    <dt>آخرین تمرین</dt><dd>{{ view.rehearsal }}</dd>
+  </dl>
+  <p class="hint confirm-text">{{ view.note }}</p>
+  {% if batch_line %}<p class="note">{{ batch_line }}</p>{% endif %}
+</section>
+
+{% if not owner %}
+<p class="hint">{{ not_owner }}</p>
+{% else %}
+<section class="panel" aria-labelledby="h-numbers">
+  <div class="panel-head"><h2 id="h-numbers">عددها</h2></div>
+  <div class="settings">
+    {% for f in view.fields %}
+    <div class="set" id="f-{{ f.field }}">
+      {{ note_for(f.field) }}
+      <form class="inline" hx-post="{{ lifecycle_url }}/number/{{ f.field }}" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="stamp" value="{{ stamp }}">
+        <label for="v-{{ f.field }}">{{ f.form_label }}</label>
+        <span class="money"><input id="v-{{ f.field }}" name="value" inputmode="numeric" autocomplete="off" aria-describedby="hint-{{ f.field }}" value="{{ f.raw }}"></span>
+        <button type="submit" class="btn">ذخیره</button>
+      </form>
+      <p class="hint" id="hint-{{ f.field }}">{{ f.form_hint }}<br>{{ f.now_line }}</p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="h-mode">
+  <div class="panel-head"><h2 id="h-mode">حذف خودکار</h2></div>
+  {{ note_for('mode') }}
+  <p class="hint">«روشن» فقط وقتی قبول می‌شود که در {{ view.valid_days }} روز گذشته یک «تمرین» اجرا شده و گزارشش آمده باشد.</p>
+  <div class="actions">
+    {% for m in view.modes %}
+    <form class="inline" hx-post="{{ lifecycle_url }}/mode" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="stamp" value="{{ stamp }}">
+      <input type="hidden" name="mode" value="{{ m.mode }}">
+      <button type="submit" class="btn{{ ' primary' if m.current else '' }}" aria-pressed="{{ 'true' if m.current else 'false' }}"{% if m.current %} disabled{% endif %}>{{ ('✅ ' if m.current else '') ~ m.label }}</button>
+    </form>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

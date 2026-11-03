@@ -1,0 +1,21 @@
+# LOCAL-DEV ONLY — copy to docker-compose.override.yml (gitignored).
+# Publishes Postgres to localhost and sets explicit sample credentials.
+# Never use these passwords on a real deploy path.
+
+version: "3.9"
+
+services:
+  bot:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://bot_user:bot_pass_local_dev_only@db:5432/bot_db
+      LOG_LEVEL: DEBUG
+    # volumes:
+    #   - ../:/app  # Mount source for hot reload
+
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: bot_db
+      POSTGRES_USER: bot_user
+      POSTGRES_PASSWORD: bot_pass_local_dev_only

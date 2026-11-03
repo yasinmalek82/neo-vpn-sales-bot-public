@@ -1,0 +1,160 @@
+[project]
+name = "neo-vpn-bot"
+version = "0.1.0"
+description = "Telegram VPN subscription bot integrated with PasarGuard Panel"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiogram>=3.31,<4",  # 3.31 = Bot API 9.4: button `style` colours
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "alembic>=1.13,<2",
+    "asyncpg>=0.29,<1",
+    "aiosqlite>=0.20,<1",
+    "httpx>=0.27,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.3,<3",
+    "python-dotenv>=1.0,<2",
+    "apscheduler>=3.10,<4",
+    "qrcode>=7.4,<8",
+    "pillow>=10.0,<11",
+    "python-json-logger>=2.0,<3",
+    "tenacity>=8.2,<9",
+    "jdatetime>=5.0,<6",
+    "sentry-sdk>=2,<3",
+    "jinja2>=3.1,<4",  # the Mini App panel's templates (web/)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-mock>=3.12,<4",
+    "faker>=24.0,<25",
+]
+lint = [
+    "ruff>=0.4,<1",
+    "black>=26.1,<27",  # the tree is formatted with 26; 24/25 disagree on 8 files
+    "mypy>=1.10,<2",
+    "types-python-dateutil>=2.9,<3",
+    "pre-commit>=3.7,<5",
+]
+
+[tool.setuptools.packages.find]
+include = ["bot*", "api_client*", "database*", "services*", "scheduler*", "web*", "config*"]
+
+[tool.setuptools.package-data]
+web = ["templates/*", "static/*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.venv
+  | \.git
+  | __pycache__
+  | \.mypy_cache
+  | \.ruff_cache
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "W",
+    "UP",
+    "C4",
+    "B",
+    "SIM",
+    "T20",
+    "ARG",
+    "PTH",
+    "ERA",
+    "PL",
+    "TRY",
+]
+ignore = [
+    "E501",
+    "B008",
+    "TRY003",
+    "SIM103",
+    # Complexity / style noise — avoid business-logic refactors for Phase 8 gates
+    "PLR0913",
+    "PLR0912",
+    "PLR0915",
+    "PLR0917",
+    "PLR2004",
+    "PLW0603",
+    "PLC0415",
+    "UP042",
+    "TRY300",
+    "TRY004",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S106", "S311", "ARG001"]
+"alembic/*" = ["S101", "I001", "E402"]
+"scripts/*" = ["T20"]
+"database/models/*" = ["F821"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bot", "api_client", "database", "services", "scheduler", "web"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["bot", "services", "api_client", "database", "scheduler", "web"]
+warn_unused_configs = true
+warn_return_any = false
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict_optional = true
+show_error_codes = true
+pretty = true
+namespace_packages = true
+explicit_package_bases = true
+ignore_missing_imports = true
+disable_error_code = [
+    "union-attr",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "apscheduler.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "bot.handlers.*",
+]
+# aiogram CallbackQuery.message is Message | InaccessibleMessage | None
+disallow_untyped_defs = false
+disable_error_code = ["union-attr", "arg-type"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"

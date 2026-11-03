@@ -1,0 +1,19 @@
+# Mini App panel: Caddy gets the certificate for the panel's hostname and
+# forwards /panel/* to the bot. Used only with `docker compose --profile panel`.
+{$WEB_PANEL_DOMAIN} {
+	encode zstd gzip
+
+	handle /panel/* {
+		reverse_proxy bot:8080
+	}
+
+	# Authentication is checked by the bank receiver. Access logs stay off.
+	handle /bank-sms/blu {
+		reverse_proxy bot:8080
+	}
+
+	# Anything else (the Telegram webhook included) is not served on this host.
+	handle {
+		respond "Not found" 404
+	}
+}

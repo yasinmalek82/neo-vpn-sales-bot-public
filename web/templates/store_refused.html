@@ -1,0 +1,4 @@
+{# A refused store write or a missing group: one Persian line and a way to
+   reload. The page is never half-updated. #}
+<p class="alert" role="alert">{{ message }}</p>
+<p class="actions"><button type="button" class="btn" hx-get="{{ reload_url }}" hx-target="#main" hx-swap="innerHTML">بارگذاری دوباره</button></p>

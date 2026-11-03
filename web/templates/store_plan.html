@@ -1,0 +1,126 @@
+{# The plan editor: the forms on one side, the customer's button on the other.
+
+   Each control is a form that POSTs into the one service function the bot's control
+   calls (services/store_plan_edit.py); which control shows is `editor.controls`
+   (services/store_plan_edit.visible_plan_controls, the function the bot's plan
+   keyboard asks). This file decides nothing. The preview on the right is a GET
+   that returns the label the customer's purchase keyboard would build. #}
+
+{% set base = store_url ~ '/g/' ~ (editor.group_slug | urlencode) %}
+{% set plan_base = base ~ '/plans/' ~ ((editor.slug or '') | urlencode) %}
+
+{% macro note_in(section) %}{% if notice and notice_section == section %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}{% endmacro %}
+
+{% macro pv() %}hx-get="{{ base }}/plan-preview" hx-trigger="input changed delay:300ms" hx-include=".pv" hx-target="#plan-preview" hx-swap="innerHTML"{% endmacro %}
+
+{% macro form_open(action, section, cls='') %}<form class="{{ cls }}" hx-post="{{ plan_base }}/{{ action }}" hx-target="#main" hx-swap="innerHTML show:#pe-{{ section }}:top" hx-disabled-elt="find button"><input type="hidden" name="version" value="{{ version }}"><input type="hidden" name="origin" value="editor">{% endmacro %}
+
+{% macro toggle(name, on, label) %}
+{{ form_open('toggle/' ~ name, 'flags', 'row') }}
+  <span>{{ label }}</span>
+  <button type="submit" class="sw" role="switch" aria-checked="{{ 'true' if on else 'false' }}" aria-label="{{ label }}"><i></i></button>
+</form>
+{% endmacro %}
+
+<p><a href="#" class="back" hx-get="{{ base }}" hx-target="#main">‹ {{ editor.group_title }}</a></p>
+<div class="page-head">
+  <h1>{{ editor.title if editor.title else 'پلن جدید' }}</h1>
+  <p class="sub">{% if editor.slug %}<span class="lat">{{ editor.slug }}</span>{% else %}{{ editor.group_title }}{% endif %}</p>
+</div>
+{% if notice and not notice_section %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}
+{% if editor.incomplete %}<p class="alert">{{ editor.incomplete }}</p>{% endif %}
+
+<div class="pe">
+  <div class="pe-forms">
+  {% if editor.is_new %}
+    <section class="panel" id="pe-new">
+      {{ note_in('new') }}
+      <form class="pe-new" hx-post="{{ base }}/plans" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="version" value="{{ version }}">
+        <label class="fld"><span>{{ editor.size_label }}</span>
+          <span class="money"><input class="pv" name="size" inputmode="numeric" autocomplete="off" {{ pv() }}></span></label>
+        <label class="fld"><span>{{ editor.duration_label }}</span>
+          <span class="money"><input class="pv" name="duration" inputmode="numeric" autocomplete="off" {{ pv() }}></span></label>
+        <label class="fld chk"><input class="pv" type="checkbox" name="no_expiry" value="1" {{ pv() }}><span>♾ بدون انقضا</span></label>
+        {% if editor.group_kind == 'volume' %}
+        <label class="fld"><span>کاربر همزمان <small class="hint">۰ = نامحدود</small></span>
+          <span class="money"><input class="pv" name="hwid" inputmode="numeric" autocomplete="off" value="۰" {{ pv() }}></span></label>
+        {% endif %}
+        <label class="fld"><span>قیمت مشتری</span>
+          <span class="money"><input class="pv" name="price" inputmode="numeric" autocomplete="off" {{ pv() }}><span>تومان</span></span></label>
+        <label class="fld"><span>عنوان <small class="hint">خالی بماند، از حجم و مدت ساخته می‌شود</small></span>
+          <span class="money"><input class="pv" name="title" autocomplete="off" maxlength="128" {{ pv() }}></span></label>
+        <button type="submit" class="btn primary">ساخت پلن</button>
+      </form>
+    </section>
+  {% else %}
+    <section class="panel" id="pe-flags">
+      <div class="panel-head"><h2>وضعیت</h2></div>
+      {{ note_in('flags') }}
+      {% if 'flags' in editor.controls and can_edit %}
+      {{ toggle('enabled', editor.enabled, 'نمایش به مشتری') }}
+      {{ toggle('new-sale', editor.new_sale, 'فروش جدید') }}
+      {{ toggle('renew', editor.renew, 'تمدید') }}
+      {{ toggle('extra-discount', editor.extra_discount, 'تخفیف اضافه') }}
+      {% endif %}
+    </section>
+    {% if can_edit %}
+    <section class="panel" id="pe-title">
+      <div class="panel-head"><h2>عنوان</h2></div>
+      {{ note_in('title') }}
+      {{ form_open('title', 'title', 'inline') }}
+        <span class="money"><input class="pv" name="title" autocomplete="off" maxlength="128" value="{{ editor.title }}" aria-label="عنوان" {{ pv() }}></span>
+        <button type="submit" class="btn">ذخیره</button>
+      </form>
+    </section>
+    {% if 'price' in editor.controls %}
+    <section class="panel" id="pe-price">
+      <div class="panel-head"><h2>قیمت</h2></div>
+      {{ note_in('price') }}
+      <form class="inline" hx-post="{{ plan_base }}/price" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="version" value="{{ version }}"><input type="hidden" name="origin" value="editor">
+        <span class="money"><input class="pv" name="price" inputmode="numeric" autocomplete="off" value="{{ editor.price | toman if editor.price is not none else '' }}" aria-label="قیمت مشتری" {{ pv() }}><span>تومان</span></span>
+        <button type="submit" class="btn">ذخیره</button>
+      </form>
+    </section>
+    {% endif %}
+    {% if 'dims' in editor.controls %}
+    <section class="panel" id="pe-dims">
+      <div class="panel-head"><h2>حجم و مدت</h2></div>
+      {{ note_in('dims') }}
+      {{ form_open('dims', 'dims', 'pe-new') }}
+        <label class="fld"><span>{{ editor.size_label }}</span>
+          <span class="money"><input class="pv" name="size" inputmode="numeric" autocomplete="off" value="{{ editor.size | fa if editor.size is not none else '' }}" {{ pv() }}></span></label>
+        <label class="fld"><span>{{ editor.duration_label }}</span>
+          <span class="money"><input class="pv" name="duration" inputmode="numeric" autocomplete="off" value="{{ editor.duration | fa if editor.duration is not none else '' }}" {{ pv() }}></span></label>
+        <label class="fld chk"><input class="pv" type="checkbox" name="no_expiry" value="1" {{ 'checked' if editor.no_expiry else '' }} {{ pv() }}><span>♾ بدون انقضا</span></label>
+        <button type="submit" class="btn">ذخیره</button>
+      </form>
+    </section>
+    {% endif %}
+    {% if 'hwid' in editor.controls %}
+    <section class="panel" id="pe-hwid">
+      <div class="panel-head"><h2>کاربر همزمان</h2></div>
+      {{ note_in('hwid') }}
+      {{ form_open('hwid', 'hwid', 'inline') }}
+        <label for="f-pe-hwid">الان: {{ editor.hwid_label }}</label>
+        <span class="money"><input id="f-pe-hwid" class="pv" name="hwid" inputmode="numeric" autocomplete="off" value="{{ editor.hwid | fa }}" {{ pv() }}><span>۰ = نامحدود</span></span>
+        <button type="submit" class="btn">ذخیره</button>
+      </form>
+    </section>
+    {% endif %}
+    {% if 'delete' in editor.controls %}
+    <section class="panel" id="pe-delete">
+      {{ form_open('delete', 'delete', 'inline') }}<button type="submit" class="btn danger">🗑 حذف این پلن</button></form>
+    </section>
+    {% endif %}
+    {% endif %}
+  {% endif %}
+  </div>
+
+  <aside class="pe-side panel" aria-label="دکمهٔ مشتری">
+    <div class="panel-head"><h2>مشتری این دکمه را می‌بیند</h2></div>
+    <input type="hidden" class="pv" name="plan" value="{{ editor.slug or '' }}">
+    <div id="plan-preview" aria-live="polite">{% set preview = editor.preview %}{% include 'store_plan_preview.html' %}</div>
+  </aside>
+</div>

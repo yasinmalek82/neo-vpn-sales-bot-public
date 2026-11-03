@@ -1,0 +1,14 @@
+htmx.min.js
+  htmx 2.0.10, BSD Zero Clause (0BSD), https://github.com/bigskysoftware/htmx
+  Vendored from the npm package htmx.org@2.0.10 (dist/htmx.min.js); the tarball
+  matched the registry's integrity hash sha512-kdeJe7ZVwaS6QMz/ebBIVtZdpwen6L0OQ5GOhPV9MKBb196TCZeZu4yA7ZIQsaLKv7EpXz+So7KSXNuHXhj7Cw==
+  Vendored, not loaded from a CDN: the panel's users are in Iran.
+  To upgrade, replace the file and this note together.
+
+fonts/Vazirmatn-wght.woff2
+  Vazirmatn 33.003 (variable weight, 100 to 900), SIL Open Font License 1.1 (fonts/OFL.txt),
+  https://github.com/rastikerdar/vazirmatn
+  Taken from the tag v33.003, fonts/webfonts/Vazirmatn[wght].woff2;
+  sha256 4e3fa217d38fdafc1fea4414ceb58ca5e662cf0ab5fa735a8c8c20e8b42cad92
+  Vendored, not loaded from a CDN: the panel's users are in Iran. BRAND.md section 7 names it.
+  To upgrade, replace the file and this note together.

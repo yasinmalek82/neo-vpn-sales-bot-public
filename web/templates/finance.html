@@ -1,0 +1,40 @@
+{# The bot's «💰 گزارش مالی», same figures and labels. Every number is formatted
+   by the bot's own functions (filters), never here. #}
+<div class="page-head">
+  <h1>گزارش مالی</h1>
+  <p class="sub">درآمد از لحظهٔ فعال‌شدن سرویس شمرده می‌شود، نه ثبت سفارش. امروز و بازه‌ها به وقت تهران حساب می‌شوند. مبلغ‌ها به تومان.</p>
+</div>
+
+<section class="panel" aria-labelledby="h-sales">
+  <div class="panel-head"><h2 id="h-sales">فروش</h2></div>
+  <div class="list-head" aria-hidden="true"><span>بازه</span><span>درآمد</span><span>سفارش</span><span>میانگین</span></div>
+  {% for w in (report.today, report.week, report.month, report.jalali_month, report.all_time) %}
+  <div class="row-sale">
+    <span class="r-label">{{ w.label_fa }}</span>
+    <span class="r-amt num">{{ w.revenue_toman | toman }}</span>
+    <span class="r-count num">{{ w.orders | fa }} سفارش</span>
+    <span class="r-avg num">میانگین {{ w.average_toman | toman }}</span>
+  </div>
+  {% endfor %}
+</section>
+
+<h2 class="group-title">کیف پول مشتری‌ها</h2>
+<div class="kpis">
+  <div class="kpi"><span>بدهی فعلی (قابل خرج)</span><b class="num">{{ report.wallet_liability_toman | toman }}</b></div>
+  <div class="kpi"><span>مجموع شارژشده</span><b class="num">{{ report.wallet_credited_toman | toman }}</b></div>
+  <div class="kpi"><span>مجموع خرج‌شده</span><b class="num">{{ report.wallet_spent_toman | toman }}</b></div>
+</div>
+
+<h2 class="group-title">وضعیت</h2>
+<div class="kpis">
+  <div class="kpi"><span>سرویس ثبت‌شده</span><b class="num">{{ report.active_services | fa }}</b></div>
+  <div class="kpi"><span>مشتری خریدار</span><b class="num">{{ report.paying_customers | fa }}</b></div>
+  <div class="kpi"><span>کاربران</span><b class="num">{{ counts.users | fa }}</b></div>
+  <div class="kpi"><span>مسدود</span><b class="num">{{ counts.banned_users | fa }}</b></div>
+</div>
+
+{% if report.awaiting_review or report.provision_failed %}
+<p class="alert">⚠️ نیازمند رسیدگی: در انتظار بررسی {{ report.awaiting_review | fa }} | ناموفق پنل {{ report.provision_failed | fa }}</p>
+{% else %}
+<p class="calm">✅ چیزی منتظر رسیدگی نیست.</p>
+{% endif %}

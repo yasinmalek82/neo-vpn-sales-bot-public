@@ -1,0 +1,115 @@
+version: "3.9"
+
+# Production-oriented compose. Use PostgreSQL (service `db`) for real deploys.
+# SQLite is supported only for local smoke outside Docker via DATABASE_URL.
+#
+# SECURITY:
+# - Do NOT publish Postgres to the host in this file (no "5432:5432").
+# - Do NOT embed sample fixed passwords here. Require env vars.
+# - For local-dev host access + sample passwords, copy
+#   docker-compose.override.yml.example → docker-compose.override.yml
+
+services:
+  bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: neo-vpn-bot
+    env_file:
+      - ../.env
+    environment:
+      # Must be set explicitly for compose deploys (no sample password baked in).
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for compose (postgresql+asyncpg://...)}
+    volumes:
+      - ../data:/app/data
+      - ../backups:/app/backups
+      - ../config:/app/config:ro
+    ports:
+      # Plain HTTP is reached by a local TLS proxy; container peers use bot:8080.
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  db:
+    image: postgres:16-alpine
+    container_name: neo-vpn-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Intentionally no host port publish — use override for local-dev only.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backup:
+    image: postgres:16-alpine
+    container_name: neo-vpn-backup
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      DB_HOST: db
+      BACKUP_DIR: /backups
+      BACKUP_RETAIN_DAILY: "7"
+      BACKUP_RETAIN_WEEKLY: "4"
+    volumes:
+      - ../backups:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - backup
+
+  # Mini App panel: TLS in front of the bot's /panel routes. Off unless the
+  # `panel` profile is chosen:
+  #   docker compose --profile panel up -d
+  # Needs WEB_PANEL_DOMAIN (the panel's hostname; its DNS must point at this
+  # server) and, in .env, WEB_PANEL_ENABLED=true + WEB_PANEL_URL=https://<domain>/panel/.
+  # Only /panel/* is proxied, never the webhook. Without the profile this file
+  # behaves as it did before.
+  caddy:
+    image: caddy:2-alpine
+    container_name: neo-vpn-caddy
+    environment:
+      WEB_PANEL_DOMAIN: ${WEB_PANEL_DOMAIN:-}
+    # A profile service is still interpolated when the profile is off, so a
+    # required-variable check here would break every other command; fail at run.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        [ -n "$$WEB_PANEL_DOMAIN" ] || { echo "WEB_PANEL_DOMAIN is required"; exit 1; };
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bot
+    restart: unless-stopped
+    profiles:
+      - panel
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

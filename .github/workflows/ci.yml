@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main, codex/blu-sms-test-release]
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package with lint/dev extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e ".[dev,lint]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Black
+        run: black --check .
+
+      - name: Mypy
+        run: mypy bot services api_client database scheduler web
+
+      - name: Pytest
+        env:
+          BOT_TOKEN: test-token
+          # Quoted: a plain value ending in «:» is a YAML mapping key, and that
+          # one character kept GitHub from parsing this file at all.
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          PASARGUARD_BASE_URL: https://panel.example.com
+          PASARGUARD_API_KEY: pg_key_test_ci
+          ADMIN_TELEGRAM_IDS: "1"
+          SCHEDULER_ENABLED: "false"
+        # Both suites are mandatory. Separate processes match the local full
+        # gate and overlap SQLite IO without sharing application globals.
+        run: |
+          pytest -q tests/e2e > /tmp/neo-ci-e2e.log 2>&1 &
+          neo_e2e_pid=$!
+          pytest -q tests/unit tests/integration > /tmp/neo-ci-core.log 2>&1 &
+          neo_core_pid=$!
+          neo_status=0
+          wait "$neo_e2e_pid" || neo_status=1
+          wait "$neo_core_pid" || neo_status=1
+          cat /tmp/neo-ci-e2e.log /tmp/neo-ci-core.log
+          exit "$neo_status"

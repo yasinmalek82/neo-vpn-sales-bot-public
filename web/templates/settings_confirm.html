@@ -1,0 +1,12 @@
+{# Real deletion asks first, with the bot's sentence. Nothing has been written when
+   this is drawn; the button is the second request and carries the same stamp. #}
+<p class="alert confirm-text" role="status">{{ message }}</p>
+<div class="actions">
+  <form class="inline" hx-post="{{ post_url }}" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+    <input type="hidden" name="stamp" value="{{ stamp }}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="confirm" value="1">
+    <button type="submit" class="btn danger">{{ confirm_label }}</button>
+    <button type="button" class="btn" hx-get="{{ cancel_url }}" hx-target="#main" hx-swap="innerHTML">انصراف</button>
+  </form>
+</div>

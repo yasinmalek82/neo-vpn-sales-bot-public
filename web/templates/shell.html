@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false,"historyEnabled":false}'>
+<title>پنل نئو نتورک</title>
+<link rel="stylesheet" href="/panel/static/panel.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/panel/static/panel.js"></script>
+<script src="/panel/static/htmx.min.js" defer></script>
+</head>
+<body>
+<div class="app" dir="rtl">
+  <div class="shell">
+  {# The navigation is role-specific, so it is not here: this page is public and
+     holds no data. /panel/me/home fills both navs and loads the first screen. #}
+  <nav id="side" class="side" aria-label="بخش‌ها"></nav>
+  <main id="main" class="main" hx-get="/panel/me/home" hx-trigger="load" hx-swap="innerHTML" aria-live="polite">
+    <p class="empty">در حال بارگذاری…</p>
+    <noscript><p class="empty">برای دیدن پنل، جاوااسکریپت باید روشن باشد.</p></noscript>
+  </main>
+  </div>
+  <nav id="tabbar" class="tabbar" aria-label="بخش‌ها"></nav>
+</div>
+</body>
+</html>

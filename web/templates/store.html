@@ -1,0 +1,247 @@
+{# The bot's «🛍 مدیریت فروشگاه»: same groups, same status lines and ⚠️ warnings
+   (services/store_dashboard.py composes them for both), same prices. A price
+   cell is a form only for a store owner; everyone else reads the number.
+
+   The four settings sections are the bot's (🛒 فروش, 🎟 تست, 🖥 پنل, ✏️ گروه). Which
+   control shows is `gs.controls` (services/store_group_settings.visible_controls,
+   the function the bot's keyboards ask); this file decides nothing. The stop-sale
+   switches have no form here on purpose: they stay in the bot. #}
+
+{% macro note_in(section) %}{% if notice and notice_section == section %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}{% endmacro %}
+
+{% macro form_open(action, section, cls='') %}<form class="{{ cls }}" hx-post="{{ store_url }}/g/{{ selected | urlencode }}/settings/{{ action }}" hx-target="#main" hx-swap="innerHTML show:#sec-{{ section }}:top" hx-disabled-elt="find button"><input type="hidden" name="version" value="{{ version }}">{% endmacro %}
+
+{% macro picker_open(tail, box) %}<p class="actions"><button type="button" class="btn" hx-get="{{ store_url }}/g/{{ selected | urlencode }}/settings/{{ tail }}/pick?version={{ version }}" hx-target="#{{ box }}" hx-swap="innerHTML" hx-disabled-elt="this">نمایش گروه‌های پنل</button></p><div id="{{ box }}" aria-live="polite"></div>{% endmacro %}
+
+{% macro toggle(action, section, on, label) %}
+{{ form_open('toggle/' ~ action, section, 'row') }}
+  <span>{{ label }}</span>
+  <button type="submit" class="sw" role="switch" aria-checked="{{ 'true' if on else 'false' }}" aria-label="{{ label }}"><i></i></button>
+</form>
+{% endmacro %}
+
+{% macro plan_move(slug, direction, mark) %}
+<form class="inline" hx-post="{{ store_url }}/g/{{ selected | urlencode }}/plans/{{ slug | urlencode }}/move/{{ direction }}" hx-target="#main" hx-swap="innerHTML show:#sec-order:top" hx-disabled-elt="find button"><input type="hidden" name="version" value="{{ version }}"><button type="submit" class="btn" aria-label="{{ 'بالا' if direction == 'up' else 'پایین' }}">{{ mark }}</button></form>
+{% endmacro %}
+
+{% macro gbtn(node, parent_title) %}
+<button type="button" class="gbtn" hx-get="{{ store_url }}/g/{{ node.slug | urlencode }}" hx-target="#main" hx-swap="innerHTML" aria-pressed="{{ 'true' if node.slug == selected else 'false' }}">
+  <span class="gname">{% if parent_title %}<small>{{ parent_title }}</small>{% endif %}{{ node.marks }}{{ node.title }}</span>
+  <span class="gmeta num">{% if node.children %}{{ node.children | length | fa }} زیرگروه{% else %}{{ node.plan_count | fa }} پلن{% endif %}</span>
+</button>
+{% endmacro %}
+
+<div class="page-head">
+  <h1>فروشگاه</h1>
+  {% if empty %}
+  <p class="sub">{{ empty }}</p>
+  {% else %}
+  <p class="sub hub-text">{{ hub_text }}</p>
+  {% endif %}
+</div>
+
+{% if not empty %}
+<div class="actions">
+  <button type="button" class="btn" hx-get="{{ store_url }}/changes" hx-target="#main" hx-swap="innerHTML">↩️ تغییرات</button>
+  {% if can_edit %}
+  <details class="more">
+    <summary class="btn">➕ گروه جدید</summary>
+    <form class="inline newgroup" hx-post="{{ store_url }}/groups" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+      <input type="hidden" name="version" value="{{ version }}">
+      <label for="f-newgroup-title">عنوان گروه</label>
+      <span class="money"><input id="f-newgroup-title" name="title" autocomplete="off" maxlength="128"></span>
+      <label for="f-newgroup-kind">نوع گروه</label>
+      <select id="f-newgroup-kind" name="kind"><option value="volume">📦 حجمی</option><option value="unlimited">♾️ نامحدود</option></select>
+      <button type="submit" class="btn primary">اضافه کن</button>
+    </form>
+  </details>
+  {% endif %}
+</div>
+<div class="store">
+  <div class="groups" role="group" aria-label="گروه‌ها">
+    {% for top in tree %}
+    {{ gbtn(top, none) }}
+    {% for kid in top.children %}{{ gbtn(kid, top.title) }}{% endfor %}
+    {% endfor %}
+  </div>
+  <div class="gbody">
+    {% if notice and not notice_section %}<p class="{{ 'alert' if notice_is_error else 'note' }}" role="status">{{ notice }}</p>{% endif %}
+    {% if facts %}
+    <h2>{{ facts.title }}</h2>
+    <ul class="facts">{% for line in facts.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+    {% for warning in facts.warnings %}<p class="alert">{{ warning }}</p>{% endfor %}
+
+    {% set c = gs.controls if gs else [] %}
+    {% if plans or 'plan_add' in c %}
+    <section class="panel" aria-labelledby="h-plans">
+      <div class="panel-head"><h2 id="h-plans">پلن‌های {{ facts.title }}</h2>
+        {% if 'plan_add' in c %}<button type="button" class="btn primary" hx-get="{{ store_url }}/g/{{ selected | urlencode }}/new-plan" hx-target="#main" hx-swap="innerHTML">➕ پلن جدید</button>{% endif %}
+      </div>
+      <div class="plan-head" aria-hidden="true"><span>پلن</span><span>کاربر همزمان</span><span>قیمت مشتری</span><span>فروش</span></div>
+      <div class="plans">
+        {% for p in plans %}
+        <div class="plan{{ '' if p.on_sale else ' off' }}">
+          <div class="p-label"><span class="p-title">{{ p.dims if p.dims else '🧩 ' ~ p.title }}</span><span class="p-slug lat">{{ p.slug }}</span>
+            {% if can_edit %}<button type="button" class="btn" hx-get="{{ store_url }}/g/{{ selected | urlencode }}/plans/{{ p.slug | urlencode }}" hx-target="#main" hx-swap="innerHTML" aria-label="ویرایش {{ p.dims if p.dims else p.title }}">✏️ ویرایش</button>{% endif %}</div>
+          <div class="p-users"><span class="cl">کاربر همزمان</span>{{ p.devices if p.devices else '' }}</div>
+          <div class="p-price"><span class="cl">قیمت مشتری</span>
+            {% if p.editable and can_edit %}
+            <form class="price-form" hx-post="{{ store_url }}/g/{{ selected | urlencode }}/plans/{{ p.slug | urlencode }}/price" hx-target="#main" hx-swap="innerHTML" hx-disabled-elt="find button">
+              <input type="hidden" name="version" value="{{ version }}">
+              <span class="money"><input name="price" inputmode="numeric" autocomplete="off" value="{{ p.price_toman | toman if p.price_toman is not none else '' }}" aria-label="قیمت مشتری، {{ p.dims if p.dims else p.title }}"><span>تومان</span></span>
+              <button type="submit" class="btn">ذخیره</button>
+            </form>
+            {% elif p.price_toman is not none %}
+            <span class="num">{{ p.price_toman | toman }} تومان</span>
+            {% else %}
+            <span>قیمت‌گذاری پویا</span>
+            {% endif %}
+          </div>
+          <div class="p-sale"><span class="pill{{ '' if p.on_sale else ' warn' }}">{{ 'در فروش' if p.on_sale else 'متوقف' }}</span></div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if gs and 'plan_order' in c %}
+    <section class="panel" id="sec-order" aria-labelledby="h-order">
+      <div class="panel-head"><h2 id="h-order">↕️ چیدمان پلن‌ها</h2></div>
+      {{ note_in('order') }}
+      {{ form_open('order', 'order', 'row') }}
+        <span>{{ order.label }}</span>
+        <button type="submit" class="btn">تغییر</button>
+      </form>
+      {% if order.manual %}
+      <div class="plans">
+        {% for p in plans %}
+        <div class="order-row">
+          <span>{{ loop.index | fa }}</span>
+          <span class="p-title">{{ p.dims if p.dims else '🧩 ' ~ p.title }}{% if p.price_toman is not none %} <small class="num">{{ p.price_toman | toman }}</small>{% endif %}</span>
+          {{ plan_move(p.slug, 'up', '⬆️') }}
+          {{ plan_move(p.slug, 'down', '⬇️') }}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if gs %}
+    <section class="panel" aria-labelledby="h-settings">
+      <div class="panel-head"><h2 id="h-settings">تنظیمات گروه</h2></div>
+      <div class="settings">
+
+        <div class="set" id="sec-sale">
+          <h3>🛒 فروش</h3>
+          {{ note_in('sale') }}
+          <p class="hint">توقف فروش گروه («فروش جدید» و «نمایش به مشتری») فقط از ربات انجام می‌شود؛ وضعیتش در خط «فروش» بالای صفحه است.</p>
+          {{ toggle('renew', 'sale', gs.renew, 'تمدید') }}
+          {{ toggle('flat', 'sale', gs.flat, 'فهرست ساده') }}
+          {% if gs.sale_hint %}<p class="hint">{{ gs.sale_hint }}</p>{% endif %}
+          {% if 'durations' in c %}
+          <div class="subset">
+            <h4>⏱ مدت‌ها</h4>
+            <ul class="tabs">
+              {% for d in gs.durations %}
+              <li>
+                <span>{{ d.label }}</span>
+                {{ form_open('durations/' ~ d.key ~ '/remove', 'sale') }}<button type="submit" class="btn" aria-label="برداشتن {{ d.label }}">🗑</button></form>
+              </li>
+              {% endfor %}
+            </ul>
+            {{ form_open('durations/add', 'sale', 'inline') }}
+              <span class="money"><input name="months" inputmode="numeric" autocomplete="off" placeholder="مثلاً ۳" aria-label="مدت جدید به ماه"><span>ماه</span></span>
+              <button type="submit" class="btn">اضافه کن</button>
+            </form>
+            {{ form_open('durations/add', 'sale', 'inline') }}<input type="hidden" name="unlimited" value="1"><button type="submit" class="btn">♾ بدون انقضا</button></form>
+          </div>
+          {% endif %}
+          {% if 'tiers' in c %}{{ toggle('tiers', 'sale', gs.tiers, 'تفکیک ویژه/اقتصادی') }}{% endif %}
+          {% if 'custom' in c %}
+          {{ form_open('toggle/custom', 'sale', 'row') }}
+            <span>خرید سفارشی: {{ gs.custom_label }}</span>
+            <button type="submit" class="btn">تغییر</button>
+          </form>
+          {% endif %}
+          {% if 'custom_hwid' in c %}
+          {{ form_open('hwid', 'sale', 'inline') }}
+            <label for="f-hwid">👥 کاربر همزمان خرید سفارشی: {{ gs.hwid_label }}</label>
+            <span class="money"><input id="f-hwid" name="hwid" inputmode="numeric" autocomplete="off" value="{{ gs.hwid_limit | fa }}"><span>۰ = نامحدود</span></span>
+            <button type="submit" class="btn">ذخیره</button>
+          </form>
+          {% endif %}
+        </div>
+
+        <div class="set" id="sec-trial">
+          <h3>🎟 تست</h3>
+          {{ note_in('trial') }}
+          {{ form_open('trial', 'trial', 'inline') }}
+            <label>🎟 تست رایگان: {{ gs.trial_label }}</label>
+            <span class="money"><input name="gb" inputmode="numeric" autocomplete="off" value="{{ gs.trial_gb | fa }}" aria-label="حجم تست به گیگ"><span>گیگ</span></span>
+            <span class="money"><input name="days" inputmode="numeric" autocomplete="off" value="{{ gs.trial_days | fa }}" aria-label="مدت تست به روز"><span>روز</span></span>
+            <button type="submit" class="btn">ذخیره</button>
+          </form>
+          {{ form_open('trial', 'trial', 'inline') }}<input type="hidden" name="gb" value="0"><button type="submit" class="btn">خاموش کردن تست</button></form>
+          <p class="hint">هر مشتری از هر گروه یک بار می‌تواند تست بگیرد.</p>
+          {% if 'reseller_trial' in c %}{{ toggle('reseller-trial', 'trial', gs.reseller_trial, 'تست نماینده') }}{% endif %}
+        </div>
+
+        <div class="set" id="sec-panel">
+          <h3>🖥 پنل</h3>
+          {{ note_in('panel') }}
+          {{ form_open('panel-groups', 'panel', 'inline') }}
+            <label for="f-panel">🔗 گروه پنل: {{ gs.panel_label }}</label>
+            <span class="money"><input id="f-panel" class="lat" name="ids" inputmode="numeric" autocomplete="off" value="{{ gs.panel_ids }}" placeholder="11, 12"></span>
+            <button type="submit" class="btn">ذخیره</button>
+          </form>
+          <p class="hint">شناسه‌ها را با کاما جدا کن. اگر خالی بگذاری، از گروه والد استفاده می‌شود؛ اگر والد هم ندارد، این گروه فروخته نمی‌شود.</p>
+          {{ picker_open('panel-groups', 'pick-panel') }}
+          {% if 'premium_groups' in c %}
+          {{ form_open('premium-groups', 'panel', 'inline') }}
+            <label for="f-premium">{{ premium_title }}</label>
+            <span class="money"><input id="f-premium" class="lat" name="ids" inputmode="numeric" autocomplete="off" value="{{ gs.premium_ids }}" placeholder="21, 22"></span>
+            <button type="submit" class="btn">ذخیره</button>
+          </form>
+          {{ picker_open('premium-groups', 'pick-premium') }}
+          {% endif %}
+        </div>
+
+        <div class="set" id="sec-group">
+          <h3>✏️ گروه</h3>
+          {{ note_in('group') }}
+          {{ form_open('title', 'group', 'inline') }}
+            <label for="f-title">✏️ عنوان</label>
+            <span class="money"><input id="f-title" name="title" autocomplete="off" maxlength="128" value="{{ gs.title }}"></span>
+            <button type="submit" class="btn">ذخیره</button>
+          </form>
+          {{ form_open('sort', 'group', 'inline') }}
+            <label for="f-sort">🔢 ترتیب نمایش</label>
+            <span class="money"><input id="f-sort" name="sort" inputmode="numeric" autocomplete="off" value="{{ gs.sort_order | fa }}"></span>
+            <button type="submit" class="btn">ذخیره</button>
+          </form>
+          {% if 'kind' in c %}
+          {{ form_open('toggle/kind', 'group', 'row') }}
+            <span>نوع: {{ gs.kind_now }}</span>
+            <button type="submit" class="btn">تبدیل به {{ gs.kind_other }}</button>
+          </form>
+          {% endif %}
+          {% if 'subgroup' in c %}
+          {{ form_open('subgroups', 'group', 'inline') }}
+            <label for="f-sub">➕ زیرگروه جدید</label>
+            <span class="money"><input id="f-sub" name="title" autocomplete="off" maxlength="128"></span>
+            <button type="submit" class="btn">بساز</button>
+          </form>
+          {% endif %}
+          {% if 'delete' in c %}
+          {{ form_open('delete', 'group', 'inline') }}<button type="submit" class="btn danger">🗑 حذف این گروه</button></form>
+          {% endif %}
+        </div>
+
+      </div>
+    </section>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}

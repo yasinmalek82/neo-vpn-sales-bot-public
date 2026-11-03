@@ -1,0 +1,52 @@
+{# The bot's «👥 مشتری‌ها»: its search (find_customers) and its paged, filtered list
+   (list_users). Names and usernames are user input: autoescape only, never |safe. #}
+<div class="page-head">
+  <h1>مشتری‌ها</h1>
+  <p class="sub">با آیدی عددی، یوزرنیم، بخشی از نام، کد دعوت، نام سرویس، لینک ساب یا شمارهٔ سفارش (مثل #۱۲۳) پیدا کن.</p>
+</div>
+
+<form class="toolbar" role="search" hx-get="/panel/customers" hx-target="#main">
+  <input type="search" name="q" value="{{ q }}" maxlength="200" autocomplete="off" aria-label="جست‌وجوی مشتری" placeholder="آیدی، یوزرنیم یا نام">
+  {% if not q %}
+  <div class="chips">
+    {% for value, label in filters %}
+    <a href="#" class="chip" aria-pressed="{{ 'true' if value == current_filter else 'false' }}" hx-get="/panel/customers?f={{ value }}" hx-target="#main">{{ label }}</a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <a href="#" class="chip" hx-get="/panel/customers" hx-target="#main">پاک‌کردن جست‌وجو</a>
+  {% endif %}
+</form>
+
+{% if page %}
+  {% if rows %}<p class="hint">{{ page.total | fa }} نفر • نمایش {{ (page.offset + 1) | fa }} تا {{ (page.offset + rows | length) | fa }}</p>{% endif %}
+{% elif rows | length >= search_limit %}
+  <p class="hint">فقط {{ search_limit | fa }} نتیجهٔ اول نشان داده می‌شود. دقیق‌تر جست‌وجو کن.</p>
+{% endif %}
+
+{% if not rows %}
+<p class="empty">{{ empty_text }}</p>
+{% else %}
+<div class="cust-head" aria-hidden="true"><span>مشتری</span><span>آیدی</span><span>سرویس‌ها</span><span>کیف پول</span></div>
+<div class="rows">
+  {% for row in rows %}
+  <a href="#" class="rowbtn" hx-get="/panel/customers/{{ row.user_id }}" hx-target="#main">
+    <span class="c-who">
+      <span class="c-name">{{ row.label }}</span>
+      {% if row.is_banned %}<span class="pill bad">مسدود</span>{% endif %}
+      {% if row.is_admin %}<span class="pill on">ادمین</span>{% endif %}
+    </span>
+    <span class="c-id lat">{{ row.telegram_id }}</span>
+    <span class="c-sv">{% if row.service_count %}{{ row.service_count | fa }} سرویس{% else %}بدون سرویس{% endif %}</span>
+    <span class="c-wallet num">کیف پول {{ row.wallet_balance_toman | toman }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if page and (page.has_prev or page.has_next) %}
+<div class="pager">
+  {% if page.has_prev %}<a href="#" class="btn" hx-get="/panel/customers?f={{ current_filter }}&amp;o={{ page.prev_offset }}" hx-target="#main">قبلی</a>{% endif %}
+  {% if page.has_next %}<a href="#" class="btn" hx-get="/panel/customers?f={{ current_filter }}&amp;o={{ page.next_offset }}" hx-target="#main">بعدی</a>{% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,16 @@
+{# «🔌 اتصال پنل», read-only. Holds only what services/settings_overview.load_panel
+   returns: configured or not, and the watcher's stored state. The address, the key,
+   the sub path and the timeout are not on this page and not in its context. #}
+<p><a href="#" class="back" hx-get="{{ settings_url }}" hx-target="#main">‹ تنظیمات</a></p>
+<div class="page-head">
+  <h1>🔌 اتصال پنل</h1>
+  <p class="sub">فقط خواندنی. آدرس و کلید پنل و امتحان اتصال از ربات است.</p>
+</div>
+<section class="panel" aria-labelledby="h-panel">
+  <div class="panel-head"><h2 id="h-panel">وضعیت</h2></div>
+  <dl class="kv">
+    <dt>اتصال</dt><dd><span class="pill{{ '' if view.configured else ' warn' }}">{{ view.configured_line }}</span></dd>
+    <dt>پایش</dt><dd>{{ view.watch_line }}</dd>
+  </dl>
+  {% for line in view.down_lines %}<p class="alert">{{ line }}</p>{% endfor %}
+</section>
