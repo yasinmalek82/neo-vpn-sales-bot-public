@@ -640,3 +640,33 @@ def test_successful_install_loads_pinned_images_validates_compose_and_writes_exp
     assert env["WEB_PANEL_URL"] == "https://example.com/panel/"
     assert env["BOT_TOKEN"] == token
     assert env["PASARGUARD_API_KEY"] == panel_key
+
+
+def test_offline_entrypoint_does_not_add_unchecked_python_cache(tmp_path):
+    """Importing installer_swap must not change a verified bundle's file set."""
+    import os
+    import shutil
+
+    from scripts.build_test_bundle import write_checksums
+
+    root = Path(__file__).resolve().parents[2]
+    bundle = _bundle(tmp_path)
+    shutil.copy2(root / "install.sh", bundle / "install.sh")
+    for name in ("test_installer.py", "installer_swap.py"):
+        shutil.copy2(root / "scripts" / name, bundle / "source/scripts" / name)
+    write_checksums(bundle)
+    env = os.environ.copy()
+    env.pop("PYTHONDONTWRITEBYTECODE", None)
+    env.pop("PYTHONPYCACHEPREFIX", None)
+    env.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        ["/bin/sh", str(bundle / "install.sh"), "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not list(bundle.rglob("__pycache__"))
+    assert load_bundle(bundle).manifest["platform"] == "linux/amd64"

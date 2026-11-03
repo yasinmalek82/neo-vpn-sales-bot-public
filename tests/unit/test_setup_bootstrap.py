@@ -31,6 +31,8 @@ def test_piped_launcher_downloads_pinned_code_and_keeps_prompts(tmp_path):
     pid, terminal = pty.fork()
     if pid == 0:
         os.environ["PYTHONPATH"] = str(tmp_path)
+        os.environ.pop("PYTHONDONTWRITEBYTECODE", None)
+        os.environ.pop("PYTHONPYCACHEPREFIX", None)
         command = f"cat {shlex.quote(str(ROOT / 'setup.sh'))} | /bin/sh -s -- --no-swap"
         os.execl("/bin/sh", "sh", "-c", command)
     output = b""
@@ -71,6 +73,7 @@ def test_piped_launcher_downloads_pinned_code_and_keeps_prompts(tmp_path):
         assert b"DOWNLOADED_INSTALLER_EXECUTED" in output, output.decode(errors="replace")
         assert pid is None, "Launcher did not exit"
         assert os.waitstatus_to_exitcode(status) == 7
+        assert not list(tmp_path.rglob("__pycache__"))
     finally:
         if pid is not None:
             os.kill(pid, signal.SIGKILL)

@@ -1,6 +1,8 @@
 #!/bin/sh
 # Public entry point. Keep this release pin until a replacement bundle is verified.
 set -eu
+# Imports must not add unlisted files to the checksum-protected bundle.
+export PYTHONDONTWRITEBYTECODE=1
 exec python3 -c '
 import sys
 import urllib.request
