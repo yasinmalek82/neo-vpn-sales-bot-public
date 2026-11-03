@@ -23,6 +23,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
+from scripts.installer_lifecycle import Lifecycle, LifecycleError
 from scripts.installer_swap import SwapError, SwapManager
 
 
@@ -339,6 +340,19 @@ class Installer:
         self.swap_mode = swap_mode
 
     def run(self, action: str) -> None:
+        if action in {"update", "uninstall"}:
+            self.host_check()
+            if not self._existing_state(None):
+                raise InstallerError("No installed instance was found. Choose Install first.")
+            try:
+                manager = Lifecycle(self)
+                if action == "update":
+                    manager.update(load_bundle(self.bundle_dir))
+                else:
+                    manager.uninstall()
+            except LifecycleError as exc:
+                raise InstallerError(str(exc)) from None
+            return
         if action == "install":
             self.output("[1/6] Verify package")
             bundle = load_bundle(self.bundle_dir)
@@ -381,7 +395,8 @@ class Installer:
             if not self._confirm("Start the isolated neo-test services now?", default=False):
                 self.output(f"Saved. Start later: sudo sh {self.install_dir}/install.sh start")
                 return
-            self._prepare_polling()
+            if not self._prepare_polling():
+                return
             self._compose("up", "-d", "--pull", "never", "--wait", "--wait-timeout", "180")
             self._compose("ps", check=False)
             self.output(
@@ -394,7 +409,8 @@ class Installer:
         if action == "status":
             self._compose("ps", check=False)
         elif action == "start":
-            self._prepare_polling()
+            if not self._prepare_polling():
+                return
             self._compose("up", "-d", "--pull", "never")
             self._compose("ps", check=False)
         elif action == "stop":
@@ -433,7 +449,7 @@ class Installer:
             raise InstallerError("Installed manifest is invalid; refusing to operate")
         if bundle is not None and old != bundle.manifest:
             raise InstallerError(
-                "Installed bundle differs from the selected bundle; refusing updates"
+                "A different version is already installed. Choose Update to preserve its settings and data; Install does not overwrite an existing instance."
             )
         return True
 
@@ -626,7 +642,9 @@ class Installer:
             self.runner(args, input=json.dumps(payload), capture_output=True, timeout=60)
         )
 
-    def _compose_probe(self, kind: str, payload: dict[str, str]) -> dict[str, Any]:
+    def _compose_probe(
+        self, kind: str, payload: dict[str, str], *, directory: Path | None = None
+    ) -> dict[str, Any]:
         args = self._compose_command(
             "run",
             "--rm",
@@ -642,17 +660,17 @@ class Installer:
         return _parse_probe(
             self.runner(
                 args,
-                cwd=self.install_dir,
+                cwd=directory or self.install_dir,
                 input=json.dumps(payload),
                 capture_output=True,
                 timeout=60,
             )
         )
 
-    def _prepare_polling(self) -> None:
+    def _prepare_polling(self) -> bool:
         probe = self._compose_probe("telegram-config", {})
         if not probe.get("has_webhook"):
-            return
+            return True
         username = str(probe.get("username", ""))
         if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
             raise InstallerError("Telegram did not return a valid bot username")
@@ -662,15 +680,17 @@ class Installer:
         if not self._confirm(
             "Remove this webhook and start polling? Pending updates will be kept.", default=False
         ):
-            raise InstallerError(
+            self.output(
                 "Start cancelled; webhook was not changed. Saved settings are ready for a later start."
             )
+            return False
         result = self._compose_probe(
             "telegram-config-remove-webhook", {"expected_username": username}
         )
         if result.get("has_webhook") or result.get("username") != username:
             raise InstallerError("Webhook removal could not be verified; services were not started")
         self.output("[OK] Webhook removed; pending updates were kept.")
+        return True
 
     def _load_images(self, bundle: Bundle) -> None:
         loaded = self.runner(
@@ -725,6 +745,12 @@ class Installer:
                 shutil.copy2(bundle.root / "compose.yml", stage / "compose.yml")
                 shutil.copy2(bundle.root / "install.sh", stage / "install.sh")
                 shutil.copy2(bundle.root / "manifest.json", stage / "manifest.json")
+                (stage / "instance.json").write_text(
+                    json.dumps(
+                        {"project": "neo-test", "install_dir": str(self.install_dir.absolute())}
+                    )
+                    + "\n"
+                )
                 self._write_env(values, directory=stage)
                 if values.get("BANK_SMS_ENABLED") == "true":
                     config = stage / "shortcut-settings.json"
@@ -844,7 +870,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     swap.add_argument("--no-swap", action="store_true", help="Skip the interactive swap offer")
     parser.add_argument(
-        "action", nargs="?", choices=("install", "status", "start", "stop"), default=None
+        "action",
+        nargs="?",
+        choices=("install", "status", "start", "stop", "update", "uninstall"),
+        default=None,
     )
     args = parser.parse_args(argv)
     try:
@@ -860,21 +889,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("  2  Service status")
             print("  3  Start services")
             print("  4  Stop services (data is kept)")
+            print("  5  Update (keep settings and data)")
+            print("  6  Uninstall")
             print("  0  Exit")
-            selected = installer._choose("Choose an action: ", {"0", "1", "2", "3", "4"})
+            selected = installer._choose("Choose an action: ", {"0", "1", "2", "3", "4", "5", "6"})
             if selected == "0":
                 return 0
-            action = {"1": "install", "2": "status", "3": "start", "4": "stop"}[selected]
+            action = {
+                "1": "install",
+                "2": "status",
+                "3": "start",
+                "4": "stop",
+                "5": "update",
+                "6": "uninstall",
+            }[selected]
+        if (
+            action == "update"
+            and args.bundle_dir.absolute() == args.install_dir.absolute()
+            and not (args.bundle_dir / "images.tar.gz").is_file()
+        ):
+            from scripts.installer_lifecycle import update_from_latest
+
+            return update_from_latest(args.install_dir)
         installer.run(action)
     except (KeyboardInterrupt, EOFError):
         print("Installer: Setup cancelled; rerun to continue.", file=sys.stderr)
         return 130
-    except InstallerError as exc:
+    except (InstallerError, LifecycleError) as exc:
         print(f"Installer: {exc}", file=sys.stderr)
         return 1
     except OSError:
         print(
-            "Installer: A file operation failed; check free disk space and permissions. Existing installations were not overwritten.",
+            "Installer: A file operation failed; check free disk space and permissions, then inspect service status before retrying.",
             file=sys.stderr,
         )
         return 1

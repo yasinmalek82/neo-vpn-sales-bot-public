@@ -11,4 +11,7 @@ else
     RUNTIME=$SCRIPT_DIR/scripts/test_installer.py
 fi
 SOURCE_DIR=$(dirname "$(dirname "$RUNTIME")")
+if [ -f "$SCRIPT_DIR/.env" ] && [ -f "$SCRIPT_DIR/manifest.json" ]; then
+    PYTHONPATH="$SOURCE_DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 "$RUNTIME" --bundle-dir "$BUNDLE_DIR" --install-dir "$SCRIPT_DIR" "$@"
+fi
 PYTHONPATH="$SOURCE_DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 "$RUNTIME" --bundle-dir "$BUNDLE_DIR" "$@"

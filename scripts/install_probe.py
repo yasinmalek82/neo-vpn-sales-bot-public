@@ -63,7 +63,14 @@ async def _dispatch(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
         )
     if kind == "panel":
         return await _panel(str(payload.get("base_url", "")), str(payload.get("api_key", "")))
-    return {"ok": False, "error": "unsupported_probe"}
+    if kind == "configuration":
+        from bot.config import Settings
+
+        Settings(_env_file=None)
+        result = {"ok": True}
+    else:
+        result = {"ok": False, "error": "unsupported_probe"}
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

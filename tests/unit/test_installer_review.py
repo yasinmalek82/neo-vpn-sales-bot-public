@@ -274,8 +274,7 @@ def test_declining_webhook_switch_performs_no_mutation(tmp_path):
         prompt=lambda _label: "n",
         output=lambda _message: None,
     )
-    with pytest.raises(InstallerError, match="webhook|Webhook"):
-        installer._prepare_polling()
+    assert installer._prepare_polling() is False
     assert len(runner.calls) == 1
     assert runner.calls[0]["args"][-1] == "telegram-config"
 

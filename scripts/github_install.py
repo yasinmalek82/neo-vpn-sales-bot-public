@@ -185,7 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--release", required=True)
     parser.add_argument("--install-dir", type=Path, default=Path("/opt/neo-test"))
     parser.add_argument("--cache-dir", type=Path, default=Path("/var/cache/neo-test/downloads"))
-    parser.add_argument("action", nargs="?", choices=("install", "status", "start", "stop"))
+    parser.add_argument(
+        "action", nargs="?", choices=("install", "status", "start", "stop", "update", "uninstall")
+    )
     swap = parser.add_mutually_exclusive_group()
     swap.add_argument("--swap-1g", action="store_true")
     swap.add_argument("--no-swap", action="store_true")
