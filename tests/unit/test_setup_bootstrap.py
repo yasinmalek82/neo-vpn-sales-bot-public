@@ -1,0 +1,67 @@
+"""The piped public launcher must retain an interactive terminal."""
+
+import os
+import pty
+import select
+import shlex
+import signal
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_piped_launcher_downloads_pinned_code_and_keeps_prompts(tmp_path):
+    """Without /dev/tty, input() reads EOF from the consumed shell script pipe."""
+    urllib = tmp_path / "urllib"
+    urllib.mkdir()
+    (urllib / "__init__.py").write_text("")
+    (urllib / "request.py").write_text(
+        "import io\n"
+        "def urlopen(url, timeout):\n"
+        "    assert url == 'https://raw.githubusercontent.com/yasinmalek82/"
+        "neo-vpn-sales-bot-public/test/installer-04a358f7f7a7/scripts/github_install.py'\n"
+        "    assert timeout == 60\n"
+        '    return io.BytesIO(b"import sys; assert sys.argv == '
+        "['neo-install', '--release', 'test/installer-04a358f7f7a7', '--no-swap']; "
+        "assert input('INSTALLER_READY: ') == 'continue'; "
+        "print('DOWNLOADED_INSTALLER_EXECUTED', flush=True); raise SystemExit(7)\")\n"
+    )
+    pid, terminal = pty.fork()
+    if pid == 0:
+        os.environ["PYTHONPATH"] = str(tmp_path)
+        command = f"cat {shlex.quote(str(ROOT / 'setup.sh'))} | /bin/sh -s -- --no-swap"
+        os.execl("/bin/sh", "sh", "-c", command)
+    output = b""
+    status = None
+    try:
+        deadline = time.monotonic() + 15
+        answered = False
+        while time.monotonic() < deadline:
+            if select.select([terminal], [], [], 0.1)[0]:
+                try:
+                    chunk = os.read(terminal, 8192)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                output += chunk
+                if b"INSTALLER_READY:" in output and not answered:
+                    os.write(terminal, b"continue\n")
+                    answered = True
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done:
+                pid = None
+                break
+        if pid is not None:
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done:
+                pid = None
+        assert b"DOWNLOADED_INSTALLER_EXECUTED" in output, output.decode(errors="replace")
+        assert pid is None, "Launcher did not exit"
+        assert os.waitstatus_to_exitcode(status) == 7
+    finally:
+        if pid is not None:
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+        os.close(terminal)

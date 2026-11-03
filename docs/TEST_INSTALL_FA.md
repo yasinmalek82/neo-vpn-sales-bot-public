@@ -21,11 +21,16 @@
 کلیدهای ربات و پنل را فقط هنگام نصب روی سرور وارد کن.
 
 ```bash
-sudo python3 -c 'import sys,urllib.request as u; r="RELEASE_TAG"; sys.argv=["neo-install","--release",r]; s=u.urlopen("https://raw.githubusercontent.com/yasinmalek82/neo-vpn-sales-bot-public/"+r+"/scripts/github_install.py",timeout=60).read(); exec(compile(s,"neo-install","exec"),{"__name__":"__main__"})'
+curl -fsSL https://raw.githubusercontent.com/yasinmalek82/neo-vpn-sales-bot-public/main/setup.sh | sudo sh
 ```
 
+فایل شروع نصب، نسخهٔ تأییدشدهٔ `test/installer-04a358f7f7a7` را انتخاب می‌کند.
+فرمان را در ترمینال SSH اجرا کن تا سؤال‌های نصب را ببینی. در اجرای pipe،
+ورودی نصب‌کننده از `/dev/tty` گرفته می‌شود.
+
 این دستور همان تگ ثابت را دریافت می‌کند، فایل بسته و checksum را از همان Release می‌گیرد،
-checksum و مسیرهای آرشیو را بررسی می‌کند و نصب‌کننده را اجرا می‌کند. دنبال‌کنندهٔ `main` یا `latest` نیست.
+checksum و مسیرهای آرشیو را بررسی می‌کند و نصب‌کننده را اجرا می‌کند. فایل ورودی روی `main` است،
+اما دانلودکننده و بسته از تگ ثابت بالا گرفته می‌شوند؛ نسخه به‌صورت خودکار از `latest` انتخاب نمی‌شود.
 در انتخاب «Enable automatic Blu SMS confirmation» گزینهٔ `y` یا Enter را بزن.
 نصب‌کننده یک کلید تصادفی مستقل برای آیفون می‌سازد و تنظیمات را با دسترسی خصوصی ذخیره می‌کند.
 شروع سرویس‌ها در پایان سؤال جداگانه دارد. مسیر پیش‌فرض `/opt/neo-test` و پروژهٔ Compose `neo-test` است.

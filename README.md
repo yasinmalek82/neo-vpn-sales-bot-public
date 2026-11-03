@@ -4,7 +4,13 @@
 
 ## نصب آزمایشی
 
-بستهٔ آمادهٔ Ubuntu 22.04/24.04 amd64 را از [Releases](https://github.com/yasinmalek82/neo-vpn-sales-bot-public/releases) بگیر. دستور تک‌خطیِ مخصوص همان نسخه در توضیحات انتشار و فایل `INSTALL.fa.md` قرار دارد. حساب یا توکن GitHub لازم نیست.
+روی Ubuntu 22.04/24.04 amd64 این دستور را در ترمینال سرور اجرا کن:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yasinmalek82/neo-vpn-sales-bot-public/main/setup.sh | sudo sh
+```
+
+این لینک ثابت، دانلودکنندهٔ نسخهٔ تأییدشده را باز می‌کند؛ بسته از GitHub دانلود، SHA256 بررسی و نصب‌کنندهٔ تعاملی اجرا می‌شود. حساب یا توکن GitHub لازم نیست. نصب‌کننده تنظیمات خصوصی و تأیید شروع سرویس‌ها را از تو می‌پرسد. برای دانلود دستی از [Releases](https://github.com/yasinmalek82/neo-vpn-sales-bot-public/releases) استفاده کن.
 
 - [راهنمای نصب](docs/TEST_INSTALL_FA.md)
 - [تأیید پیامک بلو و تنظیم Shortcut آیفون](docs/BANK_SMS_BLU.md)
