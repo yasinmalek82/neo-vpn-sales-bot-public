@@ -1,5 +1,6 @@
 """The piped public launcher must retain an interactive terminal."""
 
+import errno
 import os
 import pty
 import select
@@ -41,22 +42,21 @@ def test_piped_launcher_downloads_pinned_code_and_keeps_prompts(tmp_path):
             if select.select([terminal], [], [], 0.1)[0]:
                 try:
                     chunk = os.read(terminal, 8192)
-                except OSError:
-                    break
-                if not chunk:
-                    break
+                except OSError as exc:
+                    if exc.errno != errno.EIO:
+                        raise
+                    chunk = b""
                 output += chunk
                 if b"INSTALLER_READY:" in output and not answered:
                     os.write(terminal, b"continue\n")
                     answered = True
+                if not chunk:
+                    # PTY EOF may precede the child's waitable exit status.
+                    time.sleep(0.01)
             done, status = os.waitpid(pid, os.WNOHANG)
             if done:
                 pid = None
                 break
-        if pid is not None:
-            done, status = os.waitpid(pid, os.WNOHANG)
-            if done:
-                pid = None
         # A child may exit between writing output and waitpid. Drain the PTY
         # after reaping it so scheduler timing cannot hide its last message.
         if pid is None:
