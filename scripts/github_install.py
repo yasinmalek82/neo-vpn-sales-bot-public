@@ -79,11 +79,19 @@ def download_release(
         timeout=60,
     ) as response:
         metadata = json.loads(response.read(1024 * 1024 + 1))
-    if metadata.get("tag_name") != tag or metadata.get("draft"):
+    if not isinstance(metadata, dict) or metadata.get("tag_name") != tag or metadata.get("draft"):
         raise DownloadError("The pinned release is not published")
     name = f"neo-test-install-linux-amd64-{tag.rsplit('-', 1)[1]}.tar.gz"
+    entries = metadata.get("assets")
+    if not isinstance(entries, list):
+        raise DownloadError("Release asset metadata is invalid")
     assets = {
-        item["name"]: item["id"] for item in metadata.get("assets", []) if isinstance(item, dict)
+        item["name"]: item["id"]
+        for item in entries
+        if isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and type(item.get("id")) is int
+        and item["id"] > 0
     }
     if name not in assets or name + ".sha256" not in assets:
         raise DownloadError("Release bundle or checksum is missing")
@@ -97,20 +105,35 @@ def download_release(
     if len(checksum) > 4096:
         raise DownloadError("Invalid checksum metadata")
     archive = destination / name
+    if archive.is_symlink() or (archive.exists() and not archive.is_file()):
+        raise DownloadError("Cached archive is not a regular file")
+    if archive.is_file():
+        try:
+            verify_download(archive, checksum)
+        except DownloadError:
+            print("Cached bundle failed verification; downloading a fresh copy...", flush=True)
+        else:
+            print("Using the verified cached bundle.", flush=True)
+            return archive
     total = 0
-    with (
-        opener(
-            request(f"{API}/releases/assets/{int(assets[name])}", "application/octet-stream"),
-            timeout=120,
-        ) as response,
-        archive.open("xb") as output,
-    ):
-        while chunk := response.read(1024 * 1024):
-            total += len(chunk)
-            if total > MAX_ARCHIVE_BYTES:
-                raise DownloadError("Release archive is too large")
-            output.write(chunk)
-    verify_download(archive, checksum)
+    with tempfile.TemporaryDirectory(prefix=".neo-download-", dir=destination) as temporary:
+        partial = Path(temporary) / name
+        with (
+            opener(
+                request(f"{API}/releases/assets/{int(assets[name])}", "application/octet-stream"),
+                timeout=120,
+            ) as response,
+            partial.open("xb") as output,
+        ):
+            while chunk := response.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_ARCHIVE_BYTES:
+                    raise DownloadError("Release archive is too large")
+                output.write(chunk)
+                if total % (16 * 1024 * 1024) < len(chunk):
+                    print(f"Downloaded {total // (1024 * 1024)} MiB...", flush=True)
+        verify_download(partial, checksum)
+        partial.replace(archive)
     return archive
 
 
@@ -148,10 +171,21 @@ def extract_bundle(archive: Path, destination: Path, name: str) -> Path:
     return destination / name
 
 
+def prepare_cache(cache: Path) -> None:
+    if cache.is_symlink():
+        raise DownloadError("Download cache cannot be a symlink")
+    cache.mkdir(parents=True, exist_ok=True, mode=0o700)
+    metadata = cache.stat()
+    if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+        raise DownloadError("Download cache must be a private directory owned by the current user")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release", required=True)
     parser.add_argument("--install-dir", type=Path, default=Path("/opt/neo-test"))
+    parser.add_argument("--cache-dir", type=Path, default=Path("/var/cache/neo-test/downloads"))
+    parser.add_argument("action", nargs="?", choices=("install", "status", "start", "stop"))
     swap = parser.add_mutually_exclusive_group()
     swap.add_argument("--swap-1g", action="store_true")
     swap.add_argument("--no-swap", action="store_true")
@@ -165,10 +199,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     token = globals().pop("_NEO_GITHUB_TOKEN", "") or ""
     try:
+        cache = args.cache_dir
+        prepare_cache(cache)
         with tempfile.TemporaryDirectory(prefix="neo-release-download-") as temporary:
             work = Path(temporary)
             print("Downloading the pinned release and verifying its SHA256 checksum...", flush=True)
-            archive = download_release(args.release, token.strip(), work)
+            archive = download_release(args.release, token.strip(), cache)
             bundle = extract_bundle(
                 archive, work / "unpacked", archive.name.removesuffix(".tar.gz")
             )
@@ -180,9 +216,16 @@ def main(argv: list[str] | None = None) -> int:
                     "--install-dir",
                     str(args.install_dir),
                     *flags,
+                    *([args.action] if args.action else []),
                 ],
                 check=False,
             ).returncode
+    except (KeyboardInterrupt, EOFError):
+        print(
+            "Installer: Cancelled. Verified downloads are kept for the next attempt.",
+            file=sys.stderr,
+        )
+        return 130
     except DownloadError as exc:
         print(f"Installer: {exc}", file=sys.stderr)
     except (OSError, ValueError, tarfile.TarError):

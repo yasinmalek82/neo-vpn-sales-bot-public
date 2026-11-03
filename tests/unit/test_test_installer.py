@@ -282,11 +282,13 @@ def test_webhook_bot_is_rejected_before_install_directory_or_compose_start(tmp_p
             ),
         ]
     )
+    answers = iter(["test_bot", "0"])
     installer = Installer(
         bundle,
         tmp_path / "install",
         runner=runner,
         secret_prompt=lambda _label: token,
+        prompt=lambda _label: next(answers),
         host_check=lambda: None,
         preflight=lambda _bundle: None,
         ensure_docker=lambda: None,
@@ -553,13 +555,17 @@ def test_successful_install_loads_pinned_images_validates_compose_and_writes_exp
     panel_key = "pg_key_private"
     answers = ["test_bot", "42", "42", "https://panel.example", "example.com", "8.8.8.8"]
     answers += ["y", "6219861234567890", "Test Holder"] if sms_enabled else ["n"]
-    prompts = iter([*answers, "y"])
+    prompts = iter([*answers, "y", "y"])
     secrets = iter([token, panel_key])
     calls: list[dict[str, Any]] = []
     image_by_ref = {item["ref"]: item["id"] for item in load_bundle(bundle).images.values()}
 
     def runner(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         calls.append({"args": args, **kwargs})
+        if args[-1] == "telegram-config":
+            return subprocess.CompletedProcess(
+                args, 0, stdout='{"ok":true,"username":"test_bot","has_webhook":false}', stderr=""
+            )
         if args[1] == "run":
             kind = args[-1]
             data = (

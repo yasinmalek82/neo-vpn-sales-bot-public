@@ -102,6 +102,7 @@ class Settings(BaseSettings):
     support_hours_fa: str = Field(default="", alias="SUPPORT_HOURS_FA")
     channel_handle: str = Field(default="", alias="CHANNEL_HANDLE")
     run_mode: str = Field(default="polling", alias="RUN_MODE")  # polling | webhook
+    polling_drop_pending_updates: bool = Field(default=True, alias="POLLING_DROP_PENDING_UPDATES")
     webhook_host: str = Field(default="", alias="WEBHOOK_HOST")
     webhook_port: int = Field(default=8080, alias="WEBHOOK_PORT")
     webhook_path: str = Field(default="/webhook", alias="WEBHOOK_PATH")

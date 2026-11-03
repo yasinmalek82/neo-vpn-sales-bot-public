@@ -135,7 +135,7 @@ async def on_startup(bot: Bot) -> None:
         )
         logger.info("Webhook set to %s", settings.webhook_url)
     else:
-        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.delete_webhook(drop_pending_updates=settings.polling_drop_pending_updates)
         logger.info("Webhook deleted, running in polling mode")
 
     setup_scheduler(

@@ -138,7 +138,7 @@ def test_public_release_download_needs_no_authorization(tmp_path):
     assert archive.read_bytes() == data
 
 
-def test_public_entrypoint_does_not_prompt_for_github_token(monkeypatch):
+def test_public_entrypoint_does_not_prompt_for_github_token(monkeypatch, tmp_path):
     from scripts import github_install
 
     monkeypatch.setattr(github_install.sys, "platform", "linux")
@@ -151,9 +151,113 @@ def test_public_entrypoint_does_not_prompt_for_github_token(monkeypatch):
 
     monkeypatch.setattr("getpass.getpass", unexpected_prompt)
 
+    reached_download = []
+    monkeypatch.setattr(github_install, "prepare_cache", lambda _path: None)
+
     def offline_download(tag, token, destination):
+        reached_download.append(tag)
         assert token == ""
         raise github_install.DownloadError("offline fixture")
 
     monkeypatch.setattr(github_install, "download_release", offline_download)
-    assert github_install.main(["--release", "test/installer-bbbbbbbbbbbb"]) == 1
+    assert (
+        github_install.main(
+            ["--release", "test/installer-bbbbbbbbbbbb", "--cache-dir", str(tmp_path / "cache")]
+        )
+        == 1
+    )
+    assert reached_download == ["test/installer-bbbbbbbbbbbb"]
+
+
+def test_verified_cached_release_does_not_download_archive_again(tmp_path):
+    from scripts.github_install import download_release
+
+    name = "neo-test-install-linux-amd64-cccccccccccc.tar.gz"
+    data = b"verified cached archive"
+    archive = tmp_path / name
+    archive.write_bytes(data)
+    responses = [
+        json.dumps(
+            {
+                "tag_name": "test/installer-cccccccccccc",
+                "draft": False,
+                "assets": [{"name": name, "id": 31}, {"name": name + ".sha256", "id": 32}],
+            }
+        ).encode(),
+        (hashlib.sha256(data).hexdigest() + "  " + name + "\n").encode(),
+    ]
+    requests = []
+
+    def opener(request, **kwargs):
+        requests.append(request.full_url)
+        return io.BytesIO(responses.pop(0))
+
+    assert (
+        download_release("test/installer-cccccccccccc", "", tmp_path, open_request=opener)
+        == archive
+    )
+    assert archive.read_bytes() == data
+    assert len(requests) == 2
+
+
+def test_interrupted_download_does_not_leave_a_reusable_partial_archive(tmp_path):
+    from scripts.github_install import download_release
+
+    name = "neo-test-install-linux-amd64-dddddddddddd.tar.gz"
+    responses = [
+        json.dumps(
+            {
+                "tag_name": "test/installer-dddddddddddd",
+                "draft": False,
+                "assets": [{"name": name, "id": 41}, {"name": name + ".sha256", "id": 42}],
+            }
+        ).encode(),
+        (hashlib.sha256(b"complete").hexdigest() + "  " + name + "\n").encode(),
+    ]
+
+    class BrokenDownload(io.BytesIO):
+        def read(self, *args):
+            super().read(*args)
+            raise OSError("interrupted transfer")
+
+    def opener(request, **kwargs):
+        return io.BytesIO(responses.pop(0)) if responses else BrokenDownload(b"partial")
+
+    with pytest.raises(OSError):
+        download_release("test/installer-dddddddddddd", "", tmp_path, open_request=opener)
+    assert not (tmp_path / name).exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_cache_rejects_shared_permissions_and_symlinks(tmp_path):
+    from scripts.github_install import DownloadError, prepare_cache
+
+    cache = tmp_path / "cache"
+    prepare_cache(cache)
+    assert cache.stat().st_mode & 0o777 == 0o700
+    cache.chmod(0o777)
+    with pytest.raises(DownloadError, match="private"):
+        prepare_cache(cache)
+    link = tmp_path / "link"
+    link.symlink_to(cache, target_is_directory=True)
+    with pytest.raises(DownloadError):
+        prepare_cache(link)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        None,
+        [],
+        {"tag_name": "test/installer-eeeeeeeeeeee", "assets": None},
+        {"tag_name": "test/installer-eeeeeeeeeeee", "assets": [{"name": "bad"}]},
+    ],
+)
+def test_malformed_release_metadata_is_reported_without_a_traceback(tmp_path, metadata):
+    from scripts.github_install import DownloadError, download_release
+
+    def opener(_request, **_kwargs):
+        return io.BytesIO(json.dumps(metadata).encode())
+
+    with pytest.raises(DownloadError):
+        download_release("test/installer-eeeeeeeeeeee", "", tmp_path, open_request=opener)

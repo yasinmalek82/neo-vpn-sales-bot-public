@@ -1,0 +1,60 @@
+name: Build test installer release
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Verified full source commit (40 hex characters)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      NEO_REVISION: ${{ inputs.revision }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Validate revision
+        shell: bash
+        run: '[[ "$NEO_REVISION" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.revision }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build committed amd64 bundle
+        run: python3 scripts/build_test_bundle.py --revision "$NEO_REVISION" --output-dir "$RUNNER_TEMP/neo-release"
+      - name: Prepare public release assets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, shutil, tarfile
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'neo-release'
+          archive, = out.glob('neo-test-install-*.tar.gz')
+          with tarfile.open(archive) as bundle:
+              prefix = archive.name.removesuffix('.tar.gz')
+              for source, target in [('manifest.json', 'manifest.json'), ('README.fa.md', 'INSTALL.fa.md')]:
+                  data = bundle.extractfile(prefix + '/' + source).read()
+                  (out / target).write_bytes(data)
+          shutil.copy2('docs/shortcuts/NEO-Blu-Payment.shortcut', out / 'NEO-Blu-Payment.shortcut')
+          manifest = json.loads((out / 'manifest.json').read_text())
+          assert manifest['source_revision'] == os.environ['NEO_REVISION']
+          (out / 'notes.md').write_text('Test installer bundle from ' + manifest['source_revision'] + '.\n\nSee INSTALL.fa.md. This draft is published only after separate verification.\n')
+          PY
+      - name: Upload draft on GitHub infrastructure
+        shell: bash
+        run: |
+          tag="test/installer-${NEO_REVISION:0:12}"
+          out="$RUNNER_TEMP/neo-release"
+          gh release create "$tag" --target "$NEO_REVISION" --draft --prerelease --title "NEO test installer (${NEO_REVISION:0:12})" --notes-file "$out/notes.md"
+          gh release upload "$tag" "$out"/neo-test-install-*.tar.gz "$out"/*.sha256 "$out/manifest.json" "$out/INSTALL.fa.md" "$out/NEO-Blu-Payment.shortcut"

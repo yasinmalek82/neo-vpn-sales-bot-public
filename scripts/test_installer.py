@@ -189,6 +189,8 @@ def _parse_probe(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
 def _run_process(args: Sequence[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(args, text=True, check=False, **kwargs)
+    except subprocess.TimeoutExpired:
+        raise InstallerError("Connection check timed out; check connectivity and retry") from None
     except OSError:
         raise InstallerError("A required system command is unavailable") from None
 
@@ -202,7 +204,7 @@ def _default_host_check() -> None:
         release = Path("/etc/os-release").read_text(encoding="utf-8")
     except OSError:
         raise InstallerError("Ubuntu 22.04 or 24.04 is required") from None
-    if not re.search(r"^ID=ubuntu$", release, re.M) or not re.search(
+    if not re.search(r'^ID=(?:ubuntu|"ubuntu")$', release, re.M) or not re.search(
         r'^VERSION_ID="?(22\.04|24\.04)"?$', release, re.M
     ):
         raise InstallerError("Ubuntu 22.04 or 24.04 is required")
@@ -338,6 +340,7 @@ class Installer:
 
     def run(self, action: str) -> None:
         if action == "install":
+            self.output("[1/6] Verify package")
             bundle = load_bundle(self.bundle_dir)
             self.host_check()
             if self._existing_state(bundle):
@@ -346,10 +349,11 @@ class Installer:
                     "A matching neo-test installation already exists; use status, start, or stop."
                 )
                 return
-            if self.install_dir.exists():
+            if self.install_dir.exists() or self.install_dir.is_symlink():
                 raise InstallerError(
                     "Install directory already exists without matching install metadata; refusing to change it"
                 )
+            self.output("[2/6] Check server and Docker")
             self.preflight(bundle)
             if sys.platform == "linux":
                 try:
@@ -362,16 +366,22 @@ class Installer:
                 except SwapError as exc:
                     raise InstallerError(str(exc)) from None
             self.ensure_docker()
+            self.output("[3/6] Load verified offline images")
             self._load_images(bundle)
+            self.output("[4/6] Configure bot, panel and Blu")
             values = self._collect_settings(bundle)
             self._verify_dns(values["WEB_PANEL_DOMAIN"], values["PUBLIC_IPV4"])
             values.pop("PUBLIC_IPV4")
+            self.output("[5/6] Review configuration")
+            self._summary(values)
+            if not self._confirm("Save this configuration?", default=False):
+                raise InstallerError("Setup cancelled before saving configuration")
             self._install(bundle, values)
-            self._compose("config", "--quiet")
-            self.output("Configuration is ready. Start the isolated neo-test services now? [y/N]")
-            if self.prompt("Start services? ").strip().lower() not in {"y", "yes"}:
-                self.output("Install complete. Start later with: sudo ./install.sh start")
+            self.output("[6/6] Start services")
+            if not self._confirm("Start the isolated neo-test services now?", default=False):
+                self.output(f"Saved. Start later: sudo sh {self.install_dir}/install.sh start")
                 return
+            self._prepare_polling()
             self._compose("up", "-d", "--pull", "never", "--wait", "--wait-timeout", "180")
             self._compose("ps", check=False)
             self.output(
@@ -384,6 +394,7 @@ class Installer:
         if action == "status":
             self._compose("ps", check=False)
         elif action == "start":
+            self._prepare_polling()
             self._compose("up", "-d", "--pull", "never")
             self._compose("ps", check=False)
         elif action == "stop":
@@ -434,41 +445,104 @@ class Installer:
             except ValueError as exc:
                 self.output(str(exc))
 
-    def _collect_settings(self, bundle: Bundle) -> dict[str, str]:
-        token = self._ask(
-            "Telegram bot token: ",
-            lambda v: _validate_secret(v, "Token"),
-            True,
+    def _confirm(self, label: str, *, default: bool) -> bool:
+        suffix = "[Y/n]" if default else "[y/N]"
+        while True:
+            answer = self.prompt(f"{label} {suffix} ").strip().lower()
+            if not answer:
+                return default
+            if answer in {"y", "yes", "بله", "1", "۱"}:
+                return True
+            if answer in {"n", "no", "خیر", "0", "۰"}:
+                return False
+            if answer in {"q", "quit"}:
+                raise InstallerError("Setup cancelled")
+            self.output("Choose y / n; Enter uses the displayed default.")
+
+    def _choose(self, label: str, choices: set[str]) -> str:
+        while True:
+            answer = self.prompt(label).strip()
+            if answer in choices:
+                return answer
+            if answer.lower() in {"q", "quit"}:
+                return "0"
+            self.output("Choose one of the displayed numbers; 0 cancels.")
+
+    def _checked_probe(
+        self, bundle: Bundle, kind: str, payload: dict[str, str]
+    ) -> dict[str, Any] | None:
+        while True:
+            try:
+                return self._run_probe(bundle, kind, payload)
+            except InstallerError as exc:
+                self.output(str(exc))
+                choice = self._choose(
+                    "[1] Retry  [2] Change credentials  [0] Cancel: ", {"0", "1", "2"}
+                )
+                if choice == "0":
+                    raise InstallerError("Credential setup cancelled") from None
+                if choice == "2":
+                    return None
+
+    def _summary(self, values: dict[str, str]) -> None:
+        self.output(f"Bot: @{values['BOT_USERNAME']} | Admins: {values['ADMIN_TELEGRAM_IDS']}")
+        self.output(f"Panel: {values['PASARGUARD_BASE_URL']}")
+        self.output(f"Web: {values['WEB_PANEL_URL']} | Mode: polling")
+        enabled = values.get("BANK_SMS_ENABLED") == "true"
+        self.output(f"Blu SMS: {'enabled' if enabled else 'disabled'}")
+        if enabled:
+            self.output(f"Destination card: **** **** **** {values['PAYMENT_CARD_NUMBER'][-4:]}")
+        self.output(
+            "Secrets are hidden. Use a dedicated test bot; stop any other polling instance."
         )
-        probe = self._run_probe(bundle, "telegram", {"token": token})
-        if probe.get("has_webhook"):
-            raise InstallerError(
-                "This bot has a webhook configured; remove it manually and rerun the installer"
+        self.output(
+            "AWS Security Group: allow inbound TCP 80/443 and outbound HTTPS. Local checks do not verify it."
+        )
+
+    def _collect_settings(self, bundle: Bundle) -> dict[str, str]:
+        while True:
+            token = self._ask("Telegram bot token: ", lambda v: _validate_secret(v, "Token"), True)
+            probe = self._checked_probe(bundle, "telegram", {"token": token})
+            if probe is None:
+                continue
+            username = str(probe.get("username", "")).lstrip("@")
+            if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+                raise InstallerError("Telegram did not return a valid bot username")
+            self._ask(
+                f"Type @{username} to confirm this bot: ",
+                lambda v, expected=username: (
+                    expected
+                    if v.strip().lstrip("@") == expected
+                    else _invalid("Bot username confirmation did not match")
+                ),
             )
-        username = str(probe.get("username", "")).lstrip("@")
-        if not username:
-            raise InstallerError("Telegram did not return a bot username")
-        confirmed = self.prompt(f"Type @{username} to confirm: ").strip().lstrip("@")
-        if confirmed and confirmed != username:
-            raise InstallerError("Bot username confirmation did not match")
-        if not confirmed:
-            raise InstallerError("Bot username confirmation is required")
+            if probe.get("has_webhook"):
+                self.output(
+                    "Webhook is active. It stays unchanged during setup; switching is offered only when services start."
+                )
+                choice = self._choose(
+                    "[1] Continue setup  [2] Different token  [0] Cancel: ", {"0", "1", "2"}
+                )
+                if choice == "0":
+                    raise InstallerError("Webhook setup cancelled; webhook was not changed")
+                if choice == "2":
+                    continue
+            break
         admins = self._ask("Administrator Telegram ID(s), comma separated: ", validate_admin_ids)
         owners = self._ask(
-            "Store owner Telegram ID(s), comma separated: ",
+            "Store owner Telegram ID(s), comma separated (Enter = admins): ",
             lambda v: validate_admin_ids(v or admins),
         )
-        panel_url = self._ask("PasarGuard HTTPS base URL: ", validate_https_url)
-        panel_key = self._ask(
-            "PasarGuard API key: ",
-            lambda v: _validate_secret(v, "API key"),
-            True,
-        )
-        panel = self._run_probe(bundle, "panel", {"base_url": panel_url, "api_key": panel_key})
-        if panel.get("ok") is not True:
-            raise InstallerError(
-                "PasarGuard key verification failed; check the value and try again"
+        while True:
+            panel_url = self._ask("PasarGuard HTTPS base URL: ", validate_https_url)
+            panel_key = self._ask(
+                "PasarGuard API key: ", lambda v: _validate_secret(v, "API key"), True
             )
+            if (
+                self._checked_probe(bundle, "panel", {"base_url": panel_url, "api_key": panel_key})
+                is not None
+            ):
+                break
         domain = self._ask("Test panel domain: ", _validate_domain)
         public_ip = self._ask("Server public IPv4 address: ", _validate_ipv4)
         import secrets
@@ -480,6 +554,7 @@ class Installer:
             "ADMIN_TELEGRAM_IDS": admins,
             "STORE_OWNER_TELEGRAM_IDS": owners,
             "RUN_MODE": "polling",
+            "POLLING_DROP_PENDING_UPDATES": "false",
             "DB_HOST": "db",
             "DB_PORT": "5432",
             "DB_NAME": "neo_test",
@@ -505,14 +580,16 @@ class Installer:
         }.items():
             values[key] = bundle.images[image_name]["ref"]
         values["BANK_SMS_ENABLED"] = "false"
-        enable_sms = self.prompt("Enable automatic Blu SMS confirmation? [Y/n] ").strip().lower()
-        if enable_sms not in {"n", "no"}:
+        if self._confirm("Enable automatic Blu SMS confirmation?", default=True):
             card = self._ask("Destination Blu card number (16 digits): ", _validate_card)
             holder = self._ask(
-                "Blu card holder name: ", lambda v: _validate_secret(v, "Card holder")
+                "Blu card holder name: ",
+                lambda v: (
+                    _validate_secret(v, "Card holder")
+                    if len(v.strip()) <= 64
+                    else _invalid("Card holder name is too long")
+                ),
             )
-            if len(holder) > 64:
-                raise InstallerError("Card holder name is too long")
             values.update(
                 {
                     "BANK_SMS_ENABLED": "true",
@@ -545,7 +622,55 @@ class Installer:
             "scripts.install_probe",
             kind,
         ]
-        return _parse_probe(self.runner(args, input=json.dumps(payload), capture_output=True))
+        return _parse_probe(
+            self.runner(args, input=json.dumps(payload), capture_output=True, timeout=60)
+        )
+
+    def _compose_probe(self, kind: str, payload: dict[str, str]) -> dict[str, Any]:
+        args = self._compose_command(
+            "run",
+            "--rm",
+            "--no-deps",
+            "-T",
+            "--entrypoint",
+            "python",
+            "bot",
+            "-m",
+            "scripts.install_probe",
+            kind,
+        )
+        return _parse_probe(
+            self.runner(
+                args,
+                cwd=self.install_dir,
+                input=json.dumps(payload),
+                capture_output=True,
+                timeout=60,
+            )
+        )
+
+    def _prepare_polling(self) -> None:
+        probe = self._compose_probe("telegram-config", {})
+        if not probe.get("has_webhook"):
+            return
+        username = str(probe.get("username", ""))
+        if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+            raise InstallerError("Telegram did not return a valid bot username")
+        self.output(
+            f"@{username} has an active webhook. Switching now stops delivery to the old webhook service."
+        )
+        if not self._confirm(
+            "Remove this webhook and start polling? Pending updates will be kept.", default=False
+        ):
+            raise InstallerError(
+                "Start cancelled; webhook was not changed. Saved settings are ready for a later start."
+            )
+        result = self._compose_probe(
+            "telegram-config-remove-webhook", {"expected_username": username}
+        )
+        if result.get("has_webhook") or result.get("username") != username:
+            raise InstallerError("Webhook removal could not be verified; services were not started")
+        self.output("[OK] Webhook removed; pending updates were kept.")
 
     def _load_images(self, bundle: Bundle) -> None:
         loaded = self.runner(
@@ -574,79 +699,96 @@ class Installer:
             seen = {answer[4][0] for answer in self.resolve(domain, 443, type=socket.SOCK_STREAM)}
         except (OSError, ValueError):
             seen = set()
-        if expected not in seen:
-            raise InstallerError("Domain DNS does not resolve to the entered public IPv4 address")
+        if any(":" in answer for answer in seen):
+            raise InstallerError(
+                "AAAA record detected; this IPv4 test installer requires removing AAAA before continuing"
+            )
+        if seen != {expected}:
+            raise InstallerError("Domain DNS must resolve only to the entered public IPv4 address")
 
     def _install(self, bundle: Bundle, values: dict[str, str]) -> None:
         lock = self.install_dir.parent / ".neo-test-install.lock"
         lock.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(lock, os.O_CREAT | os.O_RDWR, 0o600)
+        fd = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
-            if self.install_dir.exists():
+            if self.install_dir.exists() or self.install_dir.is_symlink():
                 raise InstallerError(
                     "Install directory appeared during setup; refusing to overwrite it"
                 )
-            self.install_dir.mkdir(parents=True, mode=0o700)
-            shutil.copytree(bundle.root / "source", self.install_dir / "source")
-            shutil.copy2(bundle.root / "compose.yml", self.install_dir / "compose.yml")
-            shutil.copy2(bundle.root / "install.sh", self.install_dir / "install.sh")
-            shutil.copy2(bundle.root / "manifest.json", self.install_dir / "manifest.json")
-            self._write_env(values)
-            if values.get("BANK_SMS_ENABLED") == "true":
-                config = self.install_dir / "shortcut-settings.json"
-                shortcut_fd = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                with os.fdopen(shortcut_fd, "w", encoding="utf-8") as stream:
-                    json.dump(
-                        {
-                            "url": values["BANK_SMS_URL"],
-                            "sender": values["BANK_SMS_SENDER"],
-                            "token": values["BANK_SMS_TOKEN"],
-                        },
-                        stream,
-                        ensure_ascii=False,
-                        indent=2,
+            with tempfile.TemporaryDirectory(
+                prefix=".neo-test-stage-", dir=self.install_dir.parent
+            ) as temporary:
+                stage = Path(temporary) / "install"
+                stage.mkdir(mode=0o700)
+                shutil.copytree(bundle.root / "source", stage / "source")
+                shutil.copy2(bundle.root / "compose.yml", stage / "compose.yml")
+                shutil.copy2(bundle.root / "install.sh", stage / "install.sh")
+                shutil.copy2(bundle.root / "manifest.json", stage / "manifest.json")
+                self._write_env(values, directory=stage)
+                if values.get("BANK_SMS_ENABLED") == "true":
+                    config = stage / "shortcut-settings.json"
+                    shortcut_fd = os.open(config, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(shortcut_fd, "w", encoding="utf-8") as stream:
+                        json.dump(
+                            {
+                                "url": values["BANK_SMS_URL"],
+                                "sender": values["BANK_SMS_SENDER"],
+                                "token": values["BANK_SMS_TOKEN"],
+                            },
+                            stream,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                self._compose("config", "--quiet", directory=stage)
+                if self.install_dir.exists() or self.install_dir.is_symlink():
+                    raise InstallerError(
+                        "Install directory appeared during setup; refusing to overwrite it"
                     )
+                stage.rename(self.install_dir)
+            if values.get("BANK_SMS_ENABLED") == "true":
                 self.output(
-                    f"Private iPhone Shortcut settings: {config} (root-only). Do not share this file."
+                    f"Private iPhone Shortcut settings: {self.install_dir / 'shortcut-settings.json'} (root-only). Do not share this file."
                 )
         finally:
             os.close(fd)
 
-    def _write_env(self, values: dict[str, str]) -> None:
+    def _write_env(self, values: dict[str, str], *, directory: Path | None = None) -> None:
+        directory = directory or self.install_dir
         content = "".join(
             f"{key}={quote_compose_env(value)}\n"
             for key, value in values.items()
             if key != "PUBLIC_IPV4"
         )
-        fd, name = tempfile.mkstemp(prefix=".env.", dir=self.install_dir)
+        fd, name = tempfile.mkstemp(prefix=".env.", dir=directory)
         try:
             os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
                 stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
-            Path(name).replace(self.install_dir / ".env")
+            Path(name).replace(directory / ".env")
         except Exception:
             with suppress(OSError):
                 Path(name).unlink()
             raise
 
-    def _compose(self, *args: str, check: bool = True) -> None:
+    def _compose_command(self, *args: str) -> list[str]:
+        return [
+            "docker",
+            "compose",
+            "--project-name",
+            "neo-test",
+            "--env-file",
+            ".env",
+            "-f",
+            "compose.yml",
+            *args,
+        ]
+
+    def _compose(self, *args: str, check: bool = True, directory: Path | None = None) -> None:
         result = self.runner(
-            [
-                "docker",
-                "compose",
-                "--project-name",
-                "neo-test",
-                "--env-file",
-                ".env",
-                "-f",
-                "compose.yml",
-                *args,
-            ],
-            cwd=self.install_dir,
-            capture_output=True,
+            self._compose_command(*args), cwd=directory or self.install_dir, capture_output=True
         )
         if check and result.returncode:
             raise InstallerError("Docker Compose operation failed; use status for current state")
@@ -702,14 +844,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     swap.add_argument("--no-swap", action="store_true", help="Skip the interactive swap offer")
     parser.add_argument(
-        "action", nargs="?", choices=("install", "status", "start", "stop"), default="install"
+        "action", nargs="?", choices=("install", "status", "start", "stop"), default=None
     )
     args = parser.parse_args(argv)
     try:
         mode = "yes" if args.swap_1g else "no" if args.no_swap else "ask"
-        Installer(args.bundle_dir, args.install_dir, swap_mode=mode).run(args.action)
+        installer = Installer(args.bundle_dir, args.install_dir, swap_mode=mode)
+        action = args.action
+        if action is None:
+            print("\n==================================================")
+            print("  NEO | Isolated test installation")
+            print("  Ubuntu 22.04 / 24.04 - amd64")
+            print("==================================================")
+            print("  1  Install a new instance")
+            print("  2  Service status")
+            print("  3  Start services")
+            print("  4  Stop services (data is kept)")
+            print("  0  Exit")
+            selected = installer._choose("Choose an action: ", {"0", "1", "2", "3", "4"})
+            if selected == "0":
+                return 0
+            action = {"1": "install", "2": "status", "3": "start", "4": "stop"}[selected]
+        installer.run(action)
+    except (KeyboardInterrupt, EOFError):
+        print("Installer: Setup cancelled; rerun to continue.", file=sys.stderr)
+        return 130
     except InstallerError as exc:
         print(f"Installer: {exc}", file=sys.stderr)
+        return 1
+    except OSError:
+        print(
+            "Installer: A file operation failed; check free disk space and permissions. Existing installations were not overwritten.",
+            file=sys.stderr,
+        )
         return 1
     return 0
 
