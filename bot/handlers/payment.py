@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.config import Settings
 from bot.keyboards.admin_payment import late_receipt_keyboard, payment_review_keyboard
-from bot.keyboards.customer import receipt_waiting_keyboard
+from bot.keyboards.customer import payment_copy_keyboard, receipt_waiting_keyboard
 from bot.media import send_stored_media
 from bot.states import PurchaseStates
 from bot.texts import texts
@@ -22,7 +22,12 @@ from database.models import OrderStatus, User
 from services.bank_invoices import reserve_bank_invoice
 from services.delivery_outbox import enqueue_delivery, flush_deliveries
 from services.orders import get_open_order
-from services.payment_settings import PaymentInfo, get_payment_info
+from services.payment_settings import (
+    PaymentInfo,
+    PaymentSettingsError,
+    get_payment_info,
+    normalize_card_number,
+)
 from services.payments import PaymentError, record_late_receipt, submit_card_receipt
 from services.ux_format import fa_toman as _fmt_toman
 from services.ux_format import format_jalali, format_toman, to_persian_digits
@@ -40,7 +45,7 @@ def format_payment_instructions(info: PaymentInfo, *, order_id: int, amount_toma
         extra = f"\n{info.instructions.strip()}\n"
     return texts.payment_instructions.format(
         order_id=to_persian_digits(order_id),
-        amount=_fmt_toman(amount_toman),
+        amount=format_toman(amount_toman * 10, persian_digits=True),
         card_number=info.card_number or "—",
         holder=info.card_holder_name or "—",
         bank_line=bank_line,
@@ -67,7 +72,11 @@ async def begin_payment_wait(
     body = format_payment_instructions(info, order_id=order_id, amount_toman=amount_toman)
     if invoice is not None:
         body += "\n\n" + texts.payment_unique_amount.format(suffix=_fmt_toman(invoice.suffix_toman))
-    await message.answer(body)
+    try:
+        card_number = normalize_card_number(info.card_number)
+    except PaymentSettingsError:
+        card_number = ""
+    await message.answer(body, reply_markup=payment_copy_keyboard(card_number, amount_toman * 10))
 
 
 def _receipt_file_id(message: Message) -> str | None:

@@ -101,8 +101,9 @@ async def test_invoice_screen_shows_exact_amount_and_wallet_return(two_sessions)
     class Message:
         body = ""
 
-        async def answer(self, text):
+        async def answer(self, text, *, reply_markup):
             self.body = text
+            self.keyboard = reply_markup
 
     factory, _ = two_sessions
     _, _, order_id = await seed(factory)
@@ -115,7 +116,8 @@ async def test_invoice_screen_shows_exact_amount_and_wallet_return(two_sessions)
             message, state, config(), session=session, order_id=order_id, amount_toman=150_000
         )
     body = message.body.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٬", "0123456789,"))
-    assert f"{invoice.amount_toman:,}" in body
+    assert f"<b>{invoice.amount_toman * 10:,}</b> ریال" in body
+    assert message.keyboard.inline_keyboard[0][-1].copy_text.text == str(invoice.amount_toman * 10)
     assert "کیف پول" in body
     assert (await state.get_data())["pending_amount"] == invoice.amount_toman
     await storage.close()

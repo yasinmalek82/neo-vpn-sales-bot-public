@@ -181,6 +181,15 @@ async def test_payment_screen_shows_new_card_right_after_save_without_restart(
     shown = msg.answer.await_args.args[0]
     assert NEW_CARD in shown
     assert ENV_CARD not in shown
+    assert "۱۰٬۰۰۰</b> ریال" in shown
+    keyboard = msg.answer.await_args.kwargs["reply_markup"]
+    copied = {
+        button.copy_text.text
+        for row in keyboard.inline_keyboard
+        for button in row
+        if button.copy_text is not None
+    }
+    assert copied == {NEW_CARD, "10000"}
 
 
 def test_no_customer_read_site_still_reads_env_directly() -> None:

@@ -301,7 +301,7 @@ class PersianTexts:
     payment_instructions = (
         "🧾 <b>پرداخت سفارش #{order_id}</b>\n"
         "\n"
-        "💳 مبلغ قابل پرداخت کارت: <b>{amount}</b> تومان\n"
+        "💳 مبلغ قابل پرداخت کارت: <b>{amount}</b> ریال\n"
         "\n"
         "💳 شماره کارت: <code>{card_number}</code>\n"
         "👤 به نام: {holder}\n"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.keyboards.account import AccountCB
 from bot.keyboards.main_menu import MenuCallback
@@ -18,6 +18,20 @@ def provision_failed_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="💬 پشتیبانی", callback_data=MenuCallback.SUPPORT)],
         ]
     )
+
+
+def payment_copy_keyboard(card_number: str, amount_rial: int) -> InlineKeyboardMarkup:
+    buttons = [
+        InlineKeyboardButton(
+            text="کپی مبلغ (ریال)", copy_text=CopyTextButton(text=str(amount_rial))
+        )
+    ]
+    if card_number:
+        buttons.insert(
+            0,
+            InlineKeyboardButton(text="کپی شماره کارت", copy_text=CopyTextButton(text=card_number)),
+        )
+    return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
 
 def receipt_waiting_keyboard() -> InlineKeyboardMarkup:
