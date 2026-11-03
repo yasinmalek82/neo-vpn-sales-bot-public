@@ -658,7 +658,7 @@ def test_offline_entrypoint_does_not_add_unchecked_python_cache(tmp_path):
     root = Path(__file__).resolve().parents[2]
     bundle = _bundle(tmp_path)
     shutil.copy2(root / "install.sh", bundle / "install.sh")
-    for name in ("test_installer.py", "installer_swap.py"):
+    for name in ("test_installer.py", "installer_swap.py", "installer_lifecycle.py"):
         shutil.copy2(root / "scripts" / name, bundle / "source/scripts" / name)
     write_checksums(bundle)
     env = os.environ.copy()
@@ -676,3 +676,19 @@ def test_offline_entrypoint_does_not_add_unchecked_python_cache(tmp_path):
     assert result.returncode == 0, result.stderr
     assert not list(bundle.rglob("__pycache__"))
     assert load_bundle(bundle).manifest["platform"] == "linux/amd64"
+
+
+def test_load_accepts_verified_oci_manifest_identity(tmp_path):
+    bundle = load_bundle(_bundle(tmp_path))
+    image = bundle.images["bot"]
+    image["oci_manifest_id"] = "sha256:" + "b" * 64
+
+    def run(args, **kwargs):
+        if args[1] == "load":
+            return subprocess.CompletedProcess(args, 0, "")
+        record = next(item for item in bundle.images.values() if item["ref"] == args[3])
+        identity = record.get("oci_manifest_id", record["id"])
+        return subprocess.CompletedProcess(args, 0, f"{identity} amd64\n")
+
+    installer = Installer(bundle.root, tmp_path / "instance", runner=run)
+    installer._load_images(bundle)

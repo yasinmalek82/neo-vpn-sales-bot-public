@@ -23,7 +23,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import urlsplit
 
-from scripts.installer_lifecycle import Lifecycle, LifecycleError
+from scripts.installer_lifecycle import Lifecycle, LifecycleError, matches_image_identity
 from scripts.installer_swap import SwapError, SwapManager
 
 
@@ -112,6 +112,10 @@ def load_bundle(root: Path) -> Bundle:
             or not isinstance(image.get("id"), str)
             or not re.fullmatch(r"sha256:[0-9a-f]{64}", image["id"])
             or image.get("architecture") != "amd64"
+            or (
+                "oci_manifest_id" in image
+                and not re.fullmatch(r"sha256:[0-9a-f]{64}", str(image["oci_manifest_id"]))
+            )
         ):
             raise InstallerError(f"Bundle image metadata is invalid: {name}")
     try:
@@ -711,7 +715,7 @@ class Installer:
                 ],
                 capture_output=True,
             )
-            if result.returncode or result.stdout.strip() != f"{image['id']} amd64":
+            if result.returncode or not matches_image_identity(image, result.stdout):
                 raise InstallerError(f"Loaded {name} image did not match the manifest")
 
     def _verify_dns(self, domain: str, expected: str) -> None:

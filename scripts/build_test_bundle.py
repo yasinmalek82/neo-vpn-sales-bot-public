@@ -144,6 +144,27 @@ def save_images(references: list[str], destination: Path) -> None:
             raise RuntimeError("Docker image export failed")
 
 
+def record_exported_manifest_ids(archive_path: Path, images: dict[str, dict[str, str]]) -> None:
+    # Containerd reports the exported OCI descriptor. Classic Docker reports
+    # the configuration ID. Both identities must be pinned by the bundle.
+    with tarfile.open(archive_path, "r:gz") as archive:
+        index_file = archive.extractfile("index.json")
+        if index_file is None:
+            raise ValueError("Docker export is missing its OCI index")
+        index = json.load(index_file)
+    for record in images.values():
+        reference = record["ref"]
+        matches = [
+            entry["digest"]
+            for entry in index["manifests"]
+            if entry.get("annotations", {}).get("io.containerd.image.name")
+            in {reference, f"docker.io/library/{reference}"}
+        ]
+        if len(matches) != 1 or not re.fullmatch(r"sha256:[0-9a-f]{64}", matches[0]):
+            raise ValueError(f"Cannot verify exported OCI identity for {reference}")
+        record["oci_manifest_id"] = matches[0]
+
+
 def build(revision: str, output: Path) -> Path:
     if command(["git", "status", "--porcelain", "--untracked-files=no"]):
         raise ValueError("Commit tracked changes before packaging")
@@ -189,7 +210,6 @@ def build(revision: str, output: Path) -> Path:
             "platform": "linux/amd64",
             "images": images,
         }
-        (payload / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         for source, destination in (
             ("install.sh", "install.sh"),
             ("docker/docker-compose.test.yml", "compose.yml"),
@@ -204,6 +224,8 @@ def build(revision: str, output: Path) -> Path:
         )
         print("Exporting the images and checksums...", flush=True)
         save_images([record["ref"] for record in images.values()], payload / "images.tar.gz")
+        record_exported_manifest_ids(payload / "images.tar.gz", images)
+        (payload / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         write_checksums(payload)
         return archive_payload(payload, output, f"neo-test-install-linux-amd64-{short}")
 

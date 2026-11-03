@@ -28,6 +28,14 @@ class LifecycleError(Exception):
     """A safe operator-facing lifecycle failure."""
 
 
+def matches_image_identity(record: dict[str, str], inspected: str) -> bool:
+    return any(
+        inspected.strip() == f"{identity} amd64"
+        for key in ("id", "oci_manifest_id")
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", identity := record.get(key, ""))
+    )
+
+
 _VOLUME_KEYS = {"app_data", "app_backups", "db_data", "caddy_data", "caddy_config"}
 _TAR_WRITE = "import sys,tarfile; t=tarfile.open(fileobj=sys.stdout.buffer,mode='w|gz'); t.add('/volume',arcname='data'); t.close()"
 _TAR_READ = "import sys,tarfile\nwith tarfile.open(fileobj=sys.stdin.buffer,mode='r|gz') as t:\n for m in t:\n  if m.isfile():\n   f=t.extractfile(m)\n   while f.read(1048576): pass\n"
@@ -309,7 +317,7 @@ class Lifecycle:
             capture_output=True,
             timeout=30,
         )
-        if result.stdout.strip() != f"{identity} amd64":
+        if not matches_image_identity(record, result.stdout):
             raise LifecycleError("Installed image could not be verified for backup.")
         return reference
 
