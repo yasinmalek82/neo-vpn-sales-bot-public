@@ -21,10 +21,10 @@ def test_piped_launcher_downloads_pinned_code_and_keeps_prompts(tmp_path):
         "import io\n"
         "def urlopen(url, timeout):\n"
         "    assert url == 'https://raw.githubusercontent.com/yasinmalek82/"
-        "neo-vpn-sales-bot-public/test/installer-a72c6be8b8c8/scripts/github_install.py'\n"
+        "neo-vpn-sales-bot-public/test/installer-3c1dab0a5274/scripts/github_install.py'\n"
         "    assert timeout == 60\n"
         '    return io.BytesIO(b"import sys; assert sys.argv == '
-        "['neo-install', '--release', 'test/installer-a72c6be8b8c8', '--no-swap']; "
+        "['neo-install', '--release', 'test/installer-3c1dab0a5274', '--no-swap']; "
         "assert input('INSTALLER_READY: ') == 'continue'; "
         "print('DOWNLOADED_INSTALLER_EXECUTED', flush=True); raise SystemExit(7)\")\n"
     )

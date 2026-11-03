@@ -6,7 +6,7 @@ export PYTHONDONTWRITEBYTECODE=1
 exec python3 -c '
 import sys
 import urllib.request
-release = "test/installer-a72c6be8b8c8"
+release = "test/installer-3c1dab0a5274"
 url = "https://raw.githubusercontent.com/yasinmalek82/neo-vpn-sales-bot-public/" + release + "/scripts/github_install.py"
 with urllib.request.urlopen(url, timeout=60) as response:
     source = response.read()
