@@ -10,7 +10,7 @@
 curl -fsSL https://raw.githubusercontent.com/yasinmalek82/neo-vpn-sales-bot-public/main/setup.sh | sudo sh
 ```
 
-این لینک ثابت، دانلودکنندهٔ نسخهٔ تأییدشده را باز می‌کند؛ بسته از GitHub دانلود، SHA256 بررسی و نصب‌کنندهٔ تعاملی اجرا می‌شود. حساب یا توکن GitHub لازم نیست. نصب‌کننده تنظیمات خصوصی و تأیید شروع سرویس‌ها را از تو می‌پرسد. برای دانلود دستی از [Releases](https://github.com/yasinmalek82/neo-vpn-sales-bot-public/releases) استفاده کن.
+این لینک ثابت، دانلودکنندهٔ نسخهٔ تأییدشده را باز می‌کند؛ بسته از GitHub دانلود، SHA256 بررسی و نصب‌کنندهٔ تعاملی اجرا می‌شود. حساب یا توکن GitHub لازم نیست. نصب‌کننده تنظیمات خصوصی و تأیید شروع سرویس‌ها را از تو می‌پرسد. برای دانلود دستی از [آخرین بستهٔ نصب](https://github.com/yasinmalek82/neo-vpn-sales-bot-public/releases/latest) استفاده کن.
 
 - [راهنمای نصب](docs/TEST_INSTALL_FA.md)
 - [تأیید پیامک بلو و تنظیم Shortcut آیفون](docs/BANK_SMS_BLU.md)
