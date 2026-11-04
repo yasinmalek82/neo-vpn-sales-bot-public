@@ -12,26 +12,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_piped_launcher_downloads_pinned_code_and_keeps_prompts(tmp_path):
+def test_piped_launcher_resolves_latest_and_keeps_prompts(tmp_path):
     """Without /dev/tty, input() reads EOF from the consumed shell script pipe."""
-    urllib = tmp_path / "urllib"
-    urllib.mkdir()
-    (urllib / "__init__.py").write_text("")
-    (urllib / "request.py").write_text(
-        "import io\n"
+    (tmp_path / "sitecustomize.py").write_text(
+        "import io, json, urllib.request\n"
+        "tag = 'test/installer-123456abcdef'\n"
         "def urlopen(url, timeout):\n"
-        "    assert url == 'https://raw.githubusercontent.com/yasinmalek82/"
-        "neo-vpn-sales-bot-public/test/installer-0d000a4bffda/scripts/github_install.py'\n"
         "    assert timeout == 60\n"
+        "    if isinstance(url, urllib.request.Request):\n"
+        "        assert url.full_url.endswith('/neo-vpn-sales-bot-public/releases/latest')\n"
+        "        assert url.get_header('Cache-control') == 'no-cache'\n"
+        "        return io.BytesIO(json.dumps(dict(tag_name=tag, draft=False, "
+        "prerelease=False)).encode())\n"
+        "    assert url == 'https://raw.githubusercontent.com/yasinmalek82/"
+        "neo-vpn-sales-bot-public/' + tag + '/scripts/github_install.py'\n"
         '    return io.BytesIO(b"import sys; assert sys.argv == '
-        "['neo-install', '--release', 'test/installer-0d000a4bffda', '--no-swap']; "
+        "['neo-install', '--release', 'test/installer-123456abcdef', '--no-swap']; "
         "assert input('INSTALLER_READY: ') == 'continue'; "
         "print('DOWNLOADED_INSTALLER_EXECUTED', flush=True); raise SystemExit(7)\")\n"
+        "urllib.request.urlopen = urlopen\n"
     )
     pid, terminal = pty.fork()
     if pid == 0:
         os.environ["PYTHONPATH"] = str(tmp_path)
-        os.environ.pop("PYTHONDONTWRITEBYTECODE", None)
+        os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
         os.environ.pop("PYTHONPYCACHEPREFIX", None)
         command = f"cat {shlex.quote(str(ROOT / 'setup.sh'))} | /bin/sh -s -- --no-swap"
         os.execl("/bin/sh", "sh", "-c", command)
