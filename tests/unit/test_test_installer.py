@@ -544,10 +544,14 @@ def test_probe_cli_suppresses_library_exception_text(
     assert disabled == [install_probe.logging.CRITICAL]
 
 
-@pytest.mark.parametrize("sms_enabled", [False, True])
+@pytest.mark.parametrize(
+    "sms_enabled, existing_blu_token",
+    [(False, ""), (True, ""), (True, "existing-blu-token_0123456789-abcdef")],
+)
 def test_successful_install_loads_pinned_images_validates_compose_and_writes_expected_config(
     tmp_path: Path,
     sms_enabled: bool,
+    existing_blu_token: str,
 ) -> None:
     bundle = _bundle(tmp_path)
     install_dir = tmp_path / "install"
@@ -556,7 +560,7 @@ def test_successful_install_loads_pinned_images_validates_compose_and_writes_exp
     answers = ["test_bot", "42", "42", "https://panel.example", "example.com", "8.8.8.8"]
     answers += ["y", "6219861234567890", "Test Holder"] if sms_enabled else ["n"]
     prompts = iter([*answers, "y", "y"])
-    secrets = iter([token, panel_key])
+    secrets = iter([token, panel_key, *([existing_blu_token] if sms_enabled else [])])
     calls: list[dict[str, Any]] = []
     image_by_ref = {item["ref"]: item["id"] for item in load_bundle(bundle).images.values()}
 
@@ -635,7 +639,10 @@ def test_successful_install_loads_pinned_images_validates_compose_and_writes_exp
     if sms_enabled:
         assert env["BANK_SMS_SENDER"] == "BLUE"
         assert env["BANK_SMS_URL"] == "https://example.com/bank-sms/blu"
-        assert len(env["BANK_SMS_TOKEN"]) >= 32
+        if existing_blu_token:
+            assert env["BANK_SMS_TOKEN"] == existing_blu_token
+        else:
+            assert len(env["BANK_SMS_TOKEN"]) >= 32
         assert env["BANK_SMS_ACCOUNT_KEY"] == "blu-main"
         assert env["PAYMENT_CARD_NUMBER"] == "6219861234567890"
         assert env["PAYMENT_CARD_HOLDER_NAME"] == "Test Holder"

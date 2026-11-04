@@ -175,6 +175,13 @@ def _validate_secret(value: str, label: str) -> str:
     return secret
 
 
+def _validate_optional_blu_token(value: str) -> str:
+    token = value.strip()
+    if token and not re.fullmatch(r"[A-Za-z0-9._~+/-]{32,}=*", token):
+        raise ValueError("Enter the Blu token alone (at least 32 characters), or leave it blank")
+    return token
+
+
 def _invalid(message: str) -> str:
     raise ValueError(message)
 
@@ -610,10 +617,15 @@ class Installer:
                     else _invalid("Card holder name is too long")
                 ),
             )
+            blu_token = self._ask(
+                "Existing Blu SMS token (Enter = generate a new token): ",
+                _validate_optional_blu_token,
+                secret=True,
+            )
             values.update(
                 {
                     "BANK_SMS_ENABLED": "true",
-                    "BANK_SMS_TOKEN": secrets.token_urlsafe(48),
+                    "BANK_SMS_TOKEN": blu_token or secrets.token_urlsafe(48),
                     "BANK_SMS_SENDER": "BLUE",
                     "BANK_SMS_ACCOUNT_KEY": "blu-main",
                     "BANK_SMS_URL": f"https://{domain}/bank-sms/blu",
