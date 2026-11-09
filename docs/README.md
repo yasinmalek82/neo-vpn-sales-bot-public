@@ -1,5 +1,6 @@
 # Documentation
 
+- [نصب و بهره‌برداری نسخهٔ عمومی](INSTALL_FA.md)
 - [Test installation](TEST_INSTALL_FA.md)
 - [Blu SMS payment and iPhone Shortcut](BANK_SMS_BLU.md)
 - [Architecture](architecture.md)

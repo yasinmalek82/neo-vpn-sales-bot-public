@@ -323,12 +323,17 @@ def _customer_bound_sends(source: str) -> list[tuple[int, set[str]]]:
     return sends
 
 
-ADMIN_HANDLERS = Path(__file__).resolve().parents[2] / "bot" / "handlers" / "admin.py"
+_HANDLERS = Path(__file__).resolve().parents[2] / "bot" / "handlers"
+ADMIN_HANDLERS = (_HANDLERS / "admin.py", _HANDLERS / "admin_wallet.py")
 
 
 def test_the_scan_finds_the_sends_it_is_meant_to_check() -> None:
     """Guards the scanner, not the code: a rename that breaks it must go red."""
-    sends = _customer_bound_sends(ADMIN_HANDLERS.read_text(encoding="utf-8"))
+    sends = [
+        send
+        for path in ADMIN_HANDLERS
+        for send in _customer_bound_sends(path.read_text(encoding="utf-8"))
+    ]
     assert len(sends) >= 5, sends
     named = {name for _, names in sends for name in names}
     # The conditional-local case the resolver exists for.
@@ -337,8 +342,9 @@ def test_the_scan_finds_the_sends_it_is_meant_to_check() -> None:
 
 def test_no_admin_string_is_sent_to_a_customer() -> None:
     offenders = {
-        line: sorted(n for n in names if n.startswith("admin_"))
-        for line, names in _customer_bound_sends(ADMIN_HANDLERS.read_text(encoding="utf-8"))
+        (path.name, line): sorted(n for n in names if n.startswith("admin_"))
+        for path in ADMIN_HANDLERS
+        for line, names in _customer_bound_sends(path.read_text(encoding="utf-8"))
         if any(n.startswith("admin_") for n in names)
     }
     assert not offenders, (

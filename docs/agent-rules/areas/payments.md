@@ -6,10 +6,13 @@ paths:
   - "web/bank_sms.py"
   - "tests/unit/test_bank_sms*.py"
   - "tests/integration/test_bank_sms.py"
+  - "tests/integration/test_fast_bank_recovery.py"
   - "tests/e2e/test_bank_sms.py"
+  - "tests/e2e/test_bank_sms_fast_delivery.py"
   - "services/payments.py"
   - "services/payment_settings.py"
   - "services/wallet.py"
+  - "tests/integration/test_wallet_stale_balance.py"
   - "bot/handlers/payment.py"
   - "bot/keyboards/admin_payment.py"
 ---
@@ -29,11 +32,31 @@ paths:
   Expired/rejected/mismatched transfers queue a manual-review report without revival.
 - A bank approval commits before provisioning; existing durable recovery and delivery
   workers consume it. Do not create an in-memory fire-and-forget provisioning task.
+- A fresh `PAYMENT_APPROVED` order may skip the recovery age only when its verified
+  card payment references an approved bank event for that same order. In-progress
+  or other orders retain the age guard; ownership locks and retry backoff always apply.
+- Delivery and recovery workers poll every 5 seconds, with one non-overlapping job
+  each. This is a polling interval, not a promise of completion within 5 seconds.
+- Only the two workers' routine scheduler start/success INFO lines are filtered
+  to avoid flooding logs; their warnings, errors and other messages remain.
 - Tests: `test_bank_sms.py` in unit/integration/e2e, `test_bank_sms_http.py`.
+  Fast-path and two-session regressions: `test_bank_sms_fast_delivery.py`,
+  `test_fast_bank_recovery.py` and `test_fast_delivery_schedule.py`.
 
 Payment approval is idempotent. Two quick taps on one money confirm are
 serialised by the Dispatcher's `SimpleEventIsolation` (root `AGENTS.md`); the
 idempotency key does the rest.
+
+## Wallet balance and cached users
+
+- A row lock does not refresh an existing ORM object. The wallet reads its
+  balance as a separate scalar from the locked database row before credit or
+  debit, preserving unrelated pending changes and the caller's transaction.
+- Why: using a previously cached balance could overwrite another committed
+  credit or refuse a debit despite a newer credit.
+- Test: `tests/integration/test_wallet_stale_balance.py` exercises independent
+  sessions, replay, rollback and pending fields on a temporary SQLite database.
+  Production PostgreSQL behavior requires separate evidence on a disposable DB.
 
 ## A receipt does not depend on FSM state
 

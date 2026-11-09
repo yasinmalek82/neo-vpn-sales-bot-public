@@ -140,6 +140,8 @@ class StoreCB:
     PROMO_TG = "adm:st:prmt:"  # toggle active + code
     PROMO_Q = "adm:st:prmq:"  # a wizard button + y | n | s (yes, no, skip)
     PAY = "adm:st:pay"  # the payment card screen
+    PAY_MODE_ON = "adm:st:pymon"
+    PAY_MODE_OFF = "adm:st:pymoff"
     PAY_EDIT = "adm:st:pye:"  # + field name — prompt for one value
     PAY_CARD_OK = "adm:st:pyc"  # save the card number held in FSM state
     PAY_CLEAR = "adm:st:pyr"  # preview: back to .env
@@ -1040,9 +1042,20 @@ def store_cancel_input_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def store_pay_keyboard(*, can_edit: bool, has_override: bool) -> InlineKeyboardMarkup:
+def store_pay_keyboard(
+    *, can_edit: bool, has_override: bool, auto: bool | None = None
+) -> InlineKeyboardMarkup:
     """Four fields, two to a row; «back to .env» only when there is an override."""
     rows: list[list[InlineKeyboardButton]] = []
+    if auto is not None:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="خاموش کردن تأیید خودکار" if auto else "روشن کردن تأیید خودکار",
+                    callback_data=StoreCB.PAY_MODE_OFF if auto else StoreCB.PAY_MODE_ON,
+                )
+            ]
+        )
     if can_edit:
 
         def _b(label: str, field: str) -> InlineKeyboardButton:

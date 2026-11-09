@@ -107,16 +107,22 @@ def test_download_release_verifies_asset_before_returning(tmp_path):
     ]
 
 
-def test_public_release_download_needs_no_authorization(tmp_path):
+@pytest.mark.parametrize(
+    ("tag", "name"),
+    [
+        ("test/installer-bbbbbbbbbbbb", "neo-test-install-linux-amd64-bbbbbbbbbbbb.tar.gz"),
+        ("v1.0.0", "neo-install-linux-amd64-v1.0.0.tar.gz"),
+    ],
+)
+def test_public_release_download_needs_no_authorization(tmp_path, tag, name):
     """Sending an empty Bearer header breaks anonymous GitHub downloads."""
     from scripts.github_install import download_release
 
-    name = "neo-test-install-linux-amd64-bbbbbbbbbbbb.tar.gz"
     data = b"public archive"
     responses = [
         json.dumps(
             {
-                "tag_name": "test/installer-bbbbbbbbbbbb",
+                "tag_name": tag,
                 "draft": False,
                 "assets": [{"name": name, "id": 21}, {"name": name + ".sha256", "id": 22}],
             }
@@ -132,9 +138,7 @@ def test_public_release_download_needs_no_authorization(tmp_path):
         )
         return io.BytesIO(responses.pop(0))
 
-    archive = download_release(
-        "test/installer-bbbbbbbbbbbb", "", tmp_path, open_request=open_request
-    )
+    archive = download_release(tag, "", tmp_path, open_request=open_request)
     assert archive.read_bytes() == data
 
 

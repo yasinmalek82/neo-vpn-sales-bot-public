@@ -40,6 +40,7 @@ from database.models import OrderStatus, PasarGuardAccount, User
 from database.models.order import RENEW_MODE_RESET
 from database.models.store import StoreCategory
 from services.accounts import get_live_account, service_list_label
+from services.bank_invoices import reserve_bank_invoice
 from services.checkout import (
     CheckoutUnavailable,
     checkout_delivery_terms,
@@ -431,12 +432,13 @@ async def _refuse_custom(
     ``nothing_to_open`` is the older case: the pricing document has no custom
     plan to ask about (a store built in the admin panel).
     """
+    categories = await _published_sale_categories(session, db_user=db_user)
+    keyboard = categories_keyboard(categories)
+    await end_read_transaction(session)
     await state.set_state(PurchaseStates.choosing_plan_type)
     await message.answer(
         texts.purchase_no_ready_plans if nothing_to_open else texts.purchase_custom_not_offered,
-        reply_markup=categories_keyboard(
-            await _published_sale_categories(session, db_user=db_user)
-        ),
+        reply_markup=keyboard,
     )
 
 
@@ -2108,6 +2110,19 @@ async def confirm_order(  # noqa: PLR0911 - callback branches remain intentional
         return
 
     data = await state.get_data()
+    # The builder setting can change after the summary. Reuse its buyer-specific
+    # check before a new sale or switch, but never apply that setting to a true
+    # renewal of an existing service (which has its own renewal rules).
+    renewing = bool(data.get("renew_account_id")) and not (
+        data.get("renew_resets") or data.get("force_new")
+    )
+    if (
+        data.get("custom_purchase")
+        and not renewing
+        and not await _builder_open_for(session, settings, state, db_user)
+    ):
+        await _refuse_custom(callback.message, state, session, db_user)
+        return
     previous_delivery = data.get("checkout_delivery")
     try:
         data = await refresh_ready_checkout(session, data)
@@ -2232,6 +2247,7 @@ async def confirm_order(  # noqa: PLR0911 - callback branches remain intentional
             )
             return
 
+        await reserve_bank_invoice(session, settings, order_id=order.id)
         await session.commit()
     except OfferNoLongerLive:
         # The personal offer the summary showed was spent, voided or expired between the

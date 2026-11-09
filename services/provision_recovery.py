@@ -6,12 +6,13 @@ import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from api_client.factory import get_pasarguard_client
 from bot.config import Settings
-from database.models import Order, OrderStatus
+from database.models import Order, OrderStatus, Payment, PaymentStatus
+from database.models.bank_sms import BankSmsEvent
 from database.models.provision_recovery import ProvisionRecovery
 from database.provision_lock import ProvisionBusy, provision_ownership
 from services.provisioning import provision_order
@@ -43,12 +44,29 @@ async def recover_pending_provisions(
     session_factory: async_sessionmaker[AsyncSession], settings: Settings, *, limit: int = 5
 ) -> tuple[int, int]:
     now = datetime.now(UTC)
+    # A bank event and verified payment commit together. Only that fresh paid
+    # intent skips the recovery age; in-progress and other orders keep it.
+    approved_bank_payment = (
+        select(Payment.id)
+        .join(BankSmsEvent, BankSmsEvent.event_key == Payment.reference_id)
+        .where(
+            Payment.order_id == Order.id,
+            Payment.status == PaymentStatus.verified,
+            Payment.method == "card_to_card",
+            BankSmsEvent.order_id == Order.id,
+            BankSmsEvent.outcome == "approved",
+        )
+        .exists()
+    )
     query = (
         select(Order.id)
         .outerjoin(ProvisionRecovery, ProvisionRecovery.order_id == Order.id)
         .where(
             Order.status.in_(PENDING),
-            Order.updated_at <= now - MIN_AGE,
+            or_(
+                Order.updated_at <= now - MIN_AGE,
+                and_(Order.status == OrderStatus.PAYMENT_APPROVED, approved_bank_payment),
+            ),
             or_(ProvisionRecovery.order_id.is_(None), ProvisionRecovery.next_attempt_at <= now),
         )
         .order_by(ProvisionRecovery.next_attempt_at.asc().nulls_first(), Order.updated_at, Order.id)

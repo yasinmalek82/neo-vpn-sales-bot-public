@@ -20,6 +20,8 @@ import pytest
 
 from bot.handlers import account_link as account_link_handlers
 from bot.handlers import admin as admin_handlers
+from bot.handlers import admin_customers as customer_handlers
+from bot.handlers import admin_wallet as wallet_handlers
 from bot.handlers import common as common_handlers
 from bot.handlers import mirza_history as mirza_history_handlers
 from bot.handlers import store_admin as store_handlers
@@ -71,6 +73,8 @@ def test_every_callback_constant_has_a_handler() -> None:
     """A constant nothing handles is a button that spins until Telegram times out."""
     src = _handler_source(
         admin_handlers,
+        customer_handlers,
+        wallet_handlers,
         store_handlers,
         common_handlers,
         account_link_handlers,
@@ -90,7 +94,7 @@ def test_every_callback_constant_is_produced_by_a_keyboard() -> None:
     produced += Path(REPO, "bot/keyboards/admin_payment.py").read_text(encoding="utf-8")
     produced += Path(REPO, "bot/keyboards/main_menu.py").read_text(encoding="utf-8")
     # Confirm-step callbacks are produced by handlers, not keyboards.
-    produced += _handler_source(admin_handlers, store_handlers)
+    produced += _handler_source(admin_handlers, customer_handlers, wallet_handlers, store_handlers)
     unreachable = [
         spellings
         for spellings in _names_by_value().values()
@@ -105,6 +109,8 @@ def test_every_callback_constant_is_produced_by_a_keyboard() -> None:
 
 _ADMIN_HANDLER_FILES = [
     REPO / "bot/handlers/admin.py",
+    REPO / "bot/handlers/admin_customers.py",
+    REPO / "bot/handlers/admin_wallet.py",
     REPO / "bot/handlers/account_link.py",
     REPO / "bot/handlers/mirza_history.py",
     REPO / "bot/handlers/store_admin.py",

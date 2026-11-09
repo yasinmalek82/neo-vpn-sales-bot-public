@@ -10,6 +10,7 @@ offers, refused at checkout, and refused in provisioning before any panel call.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -276,6 +277,8 @@ async def test_panel_settings_screen_warns_on_an_unset_group_and_has_no_map(
     await _plant_every_old_fallback(session)
     await _sellable_group(session, "دارای گروه", "11,12")
     await _sellable_group(session, "بدون گروه", None)
+    row = await _ensure_row(session)
+    row.updated_at = datetime(2026, 11, 4, microsecond=183500, tzinfo=UTC)
     await commit_and_activate(session, notes="seed")
 
     text = await admin_handlers._format_panel_settings(session, SETTINGS)
@@ -283,7 +286,9 @@ async def test_panel_settings_screen_warns_on_an_unset_group_and_has_no_map(
     assert "بدون گروه: ⚠️ تنظیم نشده — فروخته نمی‌شود" in text
     assert "برای تغییر: فروشگاه ← گروه ← ⚙️ تنظیمات بیشتر ← گروه پنل" in text
     assert "پیش‌فرض" not in text
-    assert "500" not in text and "700" not in text and "900" not in text
+    settings_text, marker, timestamp = text.rpartition("\nآخرین به‌روزرسانی: ")
+    assert marker and timestamp == "2026-11-04T00:00:00.183500+00:00"
+    assert "500" not in settings_text and "700" not in settings_text and "900" not in settings_text
 
     callbacks = [
         btn.callback_data or "" for row in panel_settings_keyboard().inline_keyboard for btn in row

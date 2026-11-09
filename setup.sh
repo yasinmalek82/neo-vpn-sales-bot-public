@@ -20,7 +20,7 @@ try:
     release = metadata.get("tag_name") if isinstance(metadata, dict) else None
     if (
         not isinstance(release, str)
-        or not re.fullmatch(r"test/installer-[0-9a-f]{12}", release)
+        or not re.fullmatch(r"(?:v[0-9]+\.[0-9]+\.[0-9]+|test/installer-[0-9a-f]{12})", release)
         or metadata.get("draft") is not False
         or metadata.get("prerelease") is not False
     ):

@@ -53,6 +53,7 @@ async def session() -> AsyncGenerator[AsyncSession, None]:
 
 def _settings() -> SimpleNamespace:
     return SimpleNamespace(
+        bank_sms_enabled=False,
         max_discount_percent=None,
         default_panel_group_ids=[1],
         referral_referred_discount_percent=0,

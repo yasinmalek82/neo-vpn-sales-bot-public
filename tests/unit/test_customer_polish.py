@@ -111,15 +111,13 @@ async def test_send_service_card_forces_show_renew() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delivery_is_one_message_with_the_guide_on_it(
+async def test_delivery_is_one_message_with_the_subscription_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The owner's call in live smoke §4: no OS picker after the card.
-
-    The card already carries «📖 راهنمای اتصال», so a second message only
-    pushed the link off the screen. One message, and the way in is on it.
-    """
-    overview = _overview()
+    overview = _overview(
+        expire=datetime.now(tz=UTC) + timedelta(days=60),
+        subscription_url=" https://sub.example/AbC?key=x%2By ",
+    )
     settings = MagicMock()
     settings.service_expire_warn_days = 7
     settings.display_timezone = "Asia/Tehran"
@@ -136,19 +134,17 @@ async def test_delivery_is_one_message_with_the_guide_on_it(
     session = AsyncMock()
     session.sync_session = MagicMock()
     session.sync_session.in_transaction.return_value = False
-    with patch("bot.delivery.render_subscription_qr_png", return_value=b"PNG"):
+    with patch("bot.delivery.service_qr_png", return_value=b"PNG"):
         ok = await deliver_provisioned_service_card(
             session, settings, user_id=1, account_id=42, message=message, intro="ok"
         )
     assert ok is True
     message.answer_photo.assert_awaited_once()
     message.answer.assert_not_awaited()
-    cbs = [
-        b.callback_data
-        for row in message.answer_photo.await_args.kwargs["reply_markup"].inline_keyboard
-        for b in row
-    ]
-    assert AccountCB.svc_howto(42) in cbs
+    rows = message.answer_photo.await_args.kwargs["reply_markup"].inline_keyboard
+    assert rows[0][0].url == "https://sub.example/AbC?key=x%2By"
+    assert rows[0][0].style == "primary"
+    assert all(button.callback_data != AccountCB.svc_howto(42) for row in rows for button in row)
 
 
 def test_wallet_path_skips_activating_when_card_follows() -> None:

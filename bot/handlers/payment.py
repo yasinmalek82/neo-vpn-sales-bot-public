@@ -3,32 +3,49 @@
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
+from datetime import UTC, datetime
 from html import escape
 from typing import Any
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import BaseFilter, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from bot.config import Settings
 from bot.keyboards.admin_payment import late_receipt_keyboard, payment_review_keyboard
-from bot.keyboards.customer import payment_copy_keyboard, receipt_waiting_keyboard
+from bot.keyboards.customer import (
+    CancelPaymentCB,
+    ConfirmPaymentCancelCB,
+    SubmitPaymentReceiptCB,
+    payment_cancel_confirmation_keyboard,
+    payment_copy_keyboard,
+    receipt_waiting_keyboard,
+)
 from bot.media import send_stored_media
 from bot.states import PurchaseStates
 from bot.texts import texts
-from database.models import OrderStatus, User
-from services.bank_invoices import reserve_bank_invoice
+from database.base import end_read_transaction
+from database.models import BankInvoice, Order, OrderStatus, User
+from services.bank_invoices import aware, card_digest, card_due_toman
 from services.delivery_outbox import enqueue_delivery, flush_deliveries
 from services.orders import get_open_order
 from services.payment_settings import (
     PaymentInfo,
     PaymentSettingsError,
+    bank_sms_auto_enabled,
     get_payment_info,
     normalize_card_number,
 )
-from services.payments import PaymentError, record_late_receipt, submit_card_receipt
+from services.payments import (
+    PaymentError,
+    cancel_unpaid_order,
+    record_late_receipt,
+    submit_card_receipt,
+)
 from services.ux_format import fa_toman as _fmt_toman
 from services.ux_format import format_jalali, format_toman, to_persian_digits
 
@@ -63,20 +80,132 @@ async def begin_payment_wait(
     amount_toman: int,
 ) -> None:
     info = await get_payment_info(session, settings)
-    invoice = await reserve_bank_invoice(session, settings, order_id=order_id)
-    if invoice is not None:
-        amount_toman = int(invoice.amount_toman)
-    await session.commit()
-    await state.set_state(PurchaseStates.waiting_for_receipt)
-    await state.update_data(pending_order_id=order_id, pending_amount=amount_toman)
-    body = format_payment_instructions(info, order_id=order_id, amount_toman=amount_toman)
-    if invoice is not None:
-        body += "\n\n" + texts.payment_unique_amount.format(suffix=_fmt_toman(invoice.suffix_toman))
+    invoice = await session.get(BankInvoice, order_id)
     try:
         card_number = normalize_card_number(info.card_number)
     except PaymentSettingsError:
         card_number = ""
-    await message.answer(body, reply_markup=payment_copy_keyboard(card_number, amount_toman * 10))
+    auto = (
+        invoice is not None
+        and bool(card_number)
+        and invoice.card_digest == card_digest(card_number)
+        and invoice.account_key == settings.bank_sms_account_key
+        and datetime.now(UTC) < aware(invoice.expires_at)
+        and await bank_sms_auto_enabled(session, settings)
+    )
+    if invoice is not None:
+        amount_toman = int(invoice.amount_toman)
+    await end_read_transaction(session)
+    await state.set_state(PurchaseStates.waiting_for_receipt)
+    await state.update_data(pending_order_id=order_id, pending_amount=amount_toman)
+    body = format_payment_instructions(info, order_id=order_id, amount_toman=amount_toman)
+    if invoice is not None:
+        body += "\n\n" + texts.payment_unique_amount.format(
+            suffix=format_toman(invoice.suffix_toman * 10, persian_digits=True)
+        )
+    if auto and invoice is not None:
+        body += "\n\n" + texts.payment_auto_explained.format(
+            deadline=format_jalali(invoice.expires_at, persian_digits=True)
+        )
+    else:
+        body += "\n\n" + texts.payment_manual_explained
+    await message.answer(
+        body, reply_markup=payment_copy_keyboard(card_number, amount_toman * 10, order_id=order_id)
+    )
+
+
+@router.callback_query(SubmitPaymentReceiptCB.filter())
+async def prompt_payment_receipt(
+    callback: CallbackQuery,
+    callback_data: SubmitPaymentReceiptCB,
+    session: AsyncSession,
+    db_user: User | None,
+    state: FSMContext,
+) -> None:
+    order = await session.get(Order, callback_data.order_id) if db_user is not None else None
+    can_submit = (
+        db_user is not None
+        and order is not None
+        and order.user_id == db_user.id
+        and order.status in {OrderStatus.PENDING_PAYMENT, OrderStatus.EXPIRED}
+        and await card_due_toman(session, order) > 0
+    )
+    await end_read_transaction(session)
+    if not can_submit or not isinstance(callback.message, Message):
+        await callback.answer(texts.payment_receipt_unavailable, show_alert=True)
+        return
+    await state.set_state(PurchaseStates.waiting_for_receipt)
+    await state.update_data(pending_order_id=callback_data.order_id)
+    await callback.answer()
+    await callback.message.answer(
+        texts.payment_manual_receipt_prompt.format(
+            order_id=to_persian_digits(callback_data.order_id)
+        )
+    )
+
+
+@router.callback_query(CancelPaymentCB.filter())
+async def ask_to_cancel_card_order(
+    callback: CallbackQuery,
+    callback_data: CancelPaymentCB,
+    session: AsyncSession,
+    db_user: User | None,
+) -> None:
+    order = await get_open_order(session, db_user.id) if db_user is not None else None
+    can_cancel = (
+        order is not None
+        and order.id == callback_data.order_id
+        and order.status == OrderStatus.PENDING_PAYMENT
+    )
+    await end_read_transaction(session)
+    if not can_cancel or not isinstance(callback.message, Message):
+        await callback.answer(texts.payment_cancel_unavailable, show_alert=True)
+        return
+    await callback.answer()
+    await callback.message.answer(
+        texts.payment_cancel_warning,
+        reply_markup=payment_cancel_confirmation_keyboard(
+            callback_data.order_id, callback.message.message_id
+        ),
+    )
+
+
+@router.callback_query(ConfirmPaymentCancelCB.filter())
+async def cancel_card_order(
+    callback: CallbackQuery,
+    callback_data: ConfirmPaymentCancelCB,
+    session: AsyncSession,
+    db_user: User | None,
+    bot: Bot,
+) -> None:
+    if not callback_data.confirm:
+        await end_read_transaction(session)
+        await callback.answer()
+        if isinstance(callback.message, Message):
+            with suppress(TelegramBadRequest):
+                await callback.message.delete()
+        return
+    if db_user is None:
+        await callback.answer(texts.payment_cancel_unavailable, show_alert=True)
+        return
+    cancelled = await cancel_unpaid_order(
+        session, order_id=callback_data.order_id, user_id=db_user.id
+    )
+    if not cancelled:
+        await session.rollback()
+        await callback.answer(texts.payment_cancel_unavailable, show_alert=True)
+        return
+    await session.commit()
+    await callback.answer(texts.payment_cancelled_alert)
+    if isinstance(callback.message, Message):
+        with suppress(TelegramBadRequest):
+            await bot.edit_message_text(
+                texts.payment_cancelled.format(order_id=to_persian_digits(callback_data.order_id)),
+                chat_id=callback.message.chat.id,
+                message_id=callback_data.payment_message_id,
+            )
+        with suppress(TelegramBadRequest):
+            await callback.message.delete()
 
 
 def _receipt_file_id(message: Message) -> str | None:

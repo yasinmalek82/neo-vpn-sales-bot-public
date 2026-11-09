@@ -4,14 +4,19 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from urllib.parse import urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import Settings
 from database.models import Order, OrderStatus
 from database.models.bank_sms import BankInvoice
-from services.payment_settings import get_payment_info, normalize_card_number
+from services.payment_settings import (
+    PaymentSettingsError,
+    bank_sms_auto_enabled,
+    get_payment_info,
+    normalize_card_number,
+)
 
 BANK_SMS_PATH = "/bank-sms/blu"
 INVOICE_LIFETIME = timedelta(minutes=30)
@@ -56,11 +61,19 @@ async def card_due_toman(session: AsyncSession, order: Order) -> int:
     return max(0, int(order.price_toman) - int(order.wallet_applied_toman or 0))
 
 
+def manual_card_amounts() -> Select[tuple[int]]:
+    """Base amounts on orders with no frozen exact invoice can be paid manually."""
+    due = Order.price_toman - Order.wallet_applied_toman
+    return select(due).where(
+        ~select(BankInvoice.order_id).where(BankInvoice.order_id == Order.id).exists()
+    )
+
+
 async def reserve_bank_invoice(  # noqa: PLR0911 - explicit fail-closed reservation gates
     session: AsyncSession, settings: Settings, *, order_id: int, now: datetime | None = None
 ) -> BankInvoice | None:
     existing = await session.get(BankInvoice, order_id)
-    if existing is not None or not settings.bank_sms_enabled:
+    if existing is not None or not await bank_sms_auto_enabled(session, settings, lock=True):
         return existing
     require_bank_sms_config(settings)
     order = await session.scalar(select(Order).where(Order.id == order_id).with_for_update())
@@ -74,7 +87,10 @@ async def reserve_bank_invoice(  # noqa: PLR0911 - explicit fail-closed reservat
     if due <= 0:
         return None
     info = await get_payment_info(session, settings)
-    digest = card_digest(info.card_number)
+    try:
+        digest = card_digest(info.card_number)
+    except PaymentSettingsError:
+        return None
     moment = aware(now or datetime.now(UTC))
     lifetime = INVOICE_LIFETIME
     if settings.order_expiry_minutes > 0:
@@ -93,6 +109,10 @@ async def reserve_bank_invoice(  # noqa: PLR0911 - explicit fail-closed reservat
                 )
             )
         ).all()
+    )
+    base_due = Order.price_toman - Order.wallet_applied_toman
+    used.update(
+        await session.scalars(manual_card_amounts().where(base_due.between(due + 1, due + 999)))
     )
     for offset in range(999):
         suffix = (order_id + offset) % 999 + 1

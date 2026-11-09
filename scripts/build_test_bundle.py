@@ -1,4 +1,4 @@
-"""Build a versioned amd64 test bundle without reading local credentials or starting the bot."""
+"""Build a verified amd64 NEO installer from a committed snapshot."""
 
 from __future__ import annotations
 
@@ -165,7 +165,9 @@ def record_exported_manifest_ids(archive_path: Path, images: dict[str, dict[str,
         record["oci_manifest_id"] = matches[0]
 
 
-def build(revision: str, output: Path) -> Path:
+def build(revision: str, output: Path, *, release: str | None = None) -> Path:
+    if release is not None and not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", release):
+        raise ValueError("Invalid stable release version")
     if command(["git", "status", "--porcelain", "--untracked-files=no"]):
         raise ValueError("Commit tracked changes before packaging")
     with tempfile.TemporaryDirectory(prefix="neo-test-bundle-") as temporary:
@@ -173,14 +175,21 @@ def build(revision: str, output: Path) -> Path:
         payload.mkdir()
         commit = source_snapshot(revision, payload / "source")
         short = commit[:12]
-        tag = f"test/installer-{short}"
+        tag = release or f"test/installer-{short}"
+        name = (
+            f"neo-install-linux-amd64-{release}"
+            if release
+            else f"neo-test-install-linux-amd64-{short}"
+        )
+        image_prefix = "neo" if release else "neo-test"
+        image_tag = release or short
         existing = command(["git", "tag", "--list", tag])
         if existing:
             if command(["git", "rev-list", "-n", "1", tag]) != commit:
-                raise ValueError("Existing test tag points at a different revision")
+                raise ValueError("Existing release tag points at a different revision")
         else:
             command(["git", "tag", tag, commit])
-        bot_reference = f"neo-bot-test:{short}"
+        bot_reference = f"neo-bot:{release}" if release else f"neo-bot-test:{short}"
         print("Building the committed application for linux/amd64...", flush=True)
         command(
             [
@@ -200,9 +209,9 @@ def build(revision: str, output: Path) -> Path:
             ]
         )
         images = {"bot": image_record(bot_reference, inspect_image(bot_reference))}
-        for name, upstream in (("db", "postgres:16-alpine"), ("caddy", "caddy:2-alpine")):
-            print(f"Resolving and loading the amd64 {name} image...", flush=True)
-            images[name] = dependency_image(upstream, f"neo-test-{name}:{short}")
+        for service, upstream in (("db", "postgres:16-alpine"), ("caddy", "caddy:2-alpine")):
+            print(f"Resolving and loading the amd64 {service} image...", flush=True)
+            images[service] = dependency_image(upstream, f"{image_prefix}-{service}:{image_tag}")
         manifest = {
             "schema_version": 1,
             "source_revision": commit,
@@ -213,29 +222,29 @@ def build(revision: str, output: Path) -> Path:
         for source, destination in (
             ("install.sh", "install.sh"),
             ("docker/docker-compose.test.yml", "compose.yml"),
-            ("docs/TEST_INSTALL_FA.md", "README.fa.md"),
+            ("docs/INSTALL_FA.md" if release else "docs/TEST_INSTALL_FA.md", "README.fa.md"),
         ):
             shutil.copy2(payload / "source" / source, payload / destination)
         guide = payload / "README.fa.md"
-        guide.write_text(
-            guide.read_text()
-            .replace("BUNDLE_NAME", f"neo-test-install-linux-amd64-{short}")
-            .replace("RELEASE_TAG", tag)
-        )
+        guide.write_text(guide.read_text().replace("BUNDLE_NAME", name).replace("RELEASE_TAG", tag))
         print("Exporting the images and checksums...", flush=True)
         save_images([record["ref"] for record in images.values()], payload / "images.tar.gz")
         record_exported_manifest_ids(payload / "images.tar.gz", images)
         (payload / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         write_checksums(payload)
-        return archive_payload(payload, output, f"neo-test-install-linux-amd64-{short}")
+        return archive_payload(payload, output, name)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", default="HEAD")
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--release", help="Stable version, e.g. v1.0.0")
     arguments = parser.parse_args()
-    print(build(arguments.revision, arguments.output_dir.resolve()), flush=True)
+    print(
+        build(arguments.revision, arguments.output_dir.resolve(), release=arguments.release),
+        flush=True,
+    )
     return 0
 
 

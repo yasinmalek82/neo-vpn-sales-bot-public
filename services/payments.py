@@ -84,6 +84,35 @@ async def _get_payment_for_order(session: AsyncSession, order_id: int) -> Paymen
     return result.scalar_one_or_none()
 
 
+async def _claim_unpaid_order(
+    session: AsyncSession, *, order_id: int, user_id: int, target: OrderStatus
+) -> Order | None:
+    assert_transition(OrderStatus.PENDING_PAYMENT, target)
+    return await session.scalar(
+        update(Order)
+        .where(
+            Order.id == order_id,
+            Order.user_id == user_id,
+            Order.status == OrderStatus.PENDING_PAYMENT,
+        )
+        .values(status=target)
+        .returning(Order)
+        .execution_options(populate_existing=True)
+    )
+
+
+async def cancel_unpaid_order(session: AsyncSession, *, order_id: int, user_id: int) -> bool:
+    """Close an unpaid checkout and refund its wallet share in the same transaction."""
+    order = await _claim_unpaid_order(
+        session, order_id=order_id, user_id=user_id, target=OrderStatus.EXPIRED
+    )
+    if order is None:
+        return False
+    # Retain the bank invoice so a late transfer can still reach manual review.
+    await refund_checkout_wallet_portion(session, order=order)
+    return True
+
+
 async def submit_card_receipt(
     session: AsyncSession,
     *,
@@ -112,7 +141,17 @@ async def submit_card_receipt(
     if receipt_media_type not in {"photo", "document"}:
         raise PaymentError("invalid_receipt_media_type")
 
-    assert_transition(order.status, OrderStatus.PAYMENT_REVIEW)
+    if (
+        await _claim_unpaid_order(
+            session, order_id=order_id, user_id=user_id, target=OrderStatus.PAYMENT_REVIEW
+        )
+        is None
+    ):
+        await session.refresh(order)
+        existing = await _get_payment_for_order(session, order_id)
+        if order.status == OrderStatus.PAYMENT_REVIEW and existing is not None:
+            return existing
+        raise PaymentError(f"invalid_status:{order.status.value}")
 
     payment = Payment(
         order_id=order.id,
@@ -125,7 +164,6 @@ async def submit_card_receipt(
         receipt_media_type=receipt_media_type,
     )
     session.add(payment)
-    order.status = OrderStatus.PAYMENT_REVIEW
     await session.flush()
     return payment
 

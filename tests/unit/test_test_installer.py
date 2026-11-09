@@ -26,7 +26,7 @@ from scripts.test_installer import (
 )
 
 
-def _bundle(root: Path) -> Path:
+def _bundle(root: Path, *, tag: str = "test/installer-aaaaaaaaaaaa") -> Path:
     bundle = root / "bundle"
     (bundle / "source" / "scripts").mkdir(parents=True)
     (bundle / "compose.yml").write_text(
@@ -48,7 +48,7 @@ def _bundle(root: Path) -> Path:
     manifest = {
         "schema_version": 1,
         "source_revision": "a" * 40,
-        "source_tag": "test/installer-aaaaaaaaaaaa",
+        "source_tag": tag,
         "platform": "linux/amd64",
         "images": images,
     }
@@ -65,6 +65,11 @@ def _bundle(root: Path) -> Path:
     )
     (bundle / "SHA256SUMS").write_text(checksums, encoding="utf-8")
     return bundle
+
+
+def test_load_bundle_accepts_a_stable_release_manifest(tmp_path: Path) -> None:
+    bundle = _bundle(tmp_path, tag="v1.0.0")
+    assert load_bundle(bundle).manifest["source_tag"] == "v1.0.0"
 
 
 def test_load_bundle_rejects_a_payload_changed_after_checksum_generation(tmp_path: Path) -> None:
@@ -545,15 +550,21 @@ def test_probe_cli_suppresses_library_exception_text(
 
 
 @pytest.mark.parametrize(
-    "sms_enabled, existing_blu_token",
-    [(False, ""), (True, ""), (True, "existing-blu-token_0123456789-abcdef")],
+    "sms_enabled, existing_blu_token, tag",
+    [
+        (False, "", "test/installer-aaaaaaaaaaaa"),
+        (True, "", "test/installer-aaaaaaaaaaaa"),
+        (True, "existing-blu-token_0123456789-abcdef", "test/installer-aaaaaaaaaaaa"),
+        (True, "", "v1.0.0"),
+    ],
 )
 def test_successful_install_loads_pinned_images_validates_compose_and_writes_expected_config(
     tmp_path: Path,
     sms_enabled: bool,
     existing_blu_token: str,
+    tag: str,
 ) -> None:
-    bundle = _bundle(tmp_path)
+    bundle = _bundle(tmp_path, tag=tag)
     install_dir = tmp_path / "install"
     token = "telegram-secret"
     panel_key = "pg_key_private"
@@ -601,6 +612,9 @@ def test_successful_install_loads_pinned_images_validates_compose_and_writes_exp
     )
 
     installer.run("install")
+
+    expected_backup = "true" if tag == "v1.0.0" else "false"
+    assert f'BACKUP_ENABLED="{expected_backup}"' in (install_dir / ".env").read_text()
 
     args = [call["args"] for call in calls]
     assert args[0][:3] == ["docker", "load", "-i"]

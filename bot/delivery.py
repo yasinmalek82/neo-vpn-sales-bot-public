@@ -65,9 +65,11 @@ def _detail_markup(
         return None
     if show_renew is None:
         show_renew = is_expiring_soon(overview.expire, warn_days=warn_days)
+    url = (overview.subscription_url or "").strip()
     return service_detail_keyboard(
         account_id,
-        has_link=bool(overview.subscription_url),
+        has_link=bool(url),
+        subscription_url=url,
         show_renew=bool(show_renew),
         is_trial=is_trial,
     )
@@ -174,7 +176,7 @@ async def deliver_provisioned_service_card(
     """Load overview for ``account_id`` then deliver the polished service card.
 
     Returns True when a card (photo or text) was sent. The card carries
-    «📖 راهنمای اتصال»; no separate OS picker follows it (owner, live smoke §4).
+    a direct link to the subscription page when available.
     """
     if order_id is not None:
         # Activation already committed the intent. The handler only supplies

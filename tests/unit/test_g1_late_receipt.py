@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import database.models  # noqa: F401  (registers mappers)
-from bot.handlers import admin as admin_handlers
+from bot.handlers import admin_wallet as admin_handlers
 from bot.handlers import payment as payment_handlers
 from bot.keyboards.admin import AdminCB
 from bot.states import PurchaseStates

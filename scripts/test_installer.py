@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install and operate the owner-approved offline neo-test bundle."""
+"""Install and operate a verified NEO bundle."""
 
 from __future__ import annotations
 
@@ -99,8 +99,12 @@ def load_bundle(root: Path) -> Bundle:
     revision = manifest.get("source_revision")
     if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise InstallerError("Bundle source revision is invalid")
-    if manifest.get("source_tag") != f"test/installer-{revision[:12]}":
-        raise InstallerError("Bundle source tag does not match its revision")
+    tag = manifest.get("source_tag")
+    if not isinstance(tag, str) or (
+        tag != f"test/installer-{revision[:12]}"
+        and not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag)
+    ):
+        raise InstallerError("Bundle source tag is invalid")
     images = manifest.get("images")
     if not isinstance(images, dict) or set(images) != {"bot", "db", "caddy"}:
         raise InstallerError("Bundle image manifest is invalid")
@@ -403,7 +407,7 @@ class Installer:
                 raise InstallerError("Setup cancelled before saving configuration")
             self._install(bundle, values)
             self.output("[6/6] Start services")
-            if not self._confirm("Start the isolated neo-test services now?", default=False):
+            if not self._confirm("Start the NEO services now?", default=False):
                 self.output(f"Saved. Start later: sudo sh {self.install_dir}/install.sh start")
                 return
             if not self._prepare_polling():
@@ -598,7 +602,7 @@ class Installer:
             "WEB_PANEL_URL": f"https://{domain}/panel/",
             "WEB_PANEL_DOMAIN": domain,
             "WEB_PANEL_PUBLIC_ENABLED": "false",
-            "BACKUP_ENABLED": "false",
+            "BACKUP_ENABLED": "true" if bundle.manifest["source_tag"].startswith("v") else "false",
         }
         for key, image_name in {
             "NEO_BOT_IMAGE": "bot",
@@ -875,7 +879,7 @@ def _validate_ipv4(value: str) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Install or operate the isolated neo-test bundle")
+    parser = argparse.ArgumentParser(description="Install or operate NEO")
     parser.add_argument("--bundle-dir", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--install-dir", type=Path, default=Path("/opt/neo-test"))
     swap = parser.add_mutually_exclusive_group()
@@ -898,7 +902,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         action = args.action
         if action is None:
             print("\n==================================================")
-            print("  NEO | Isolated test installation")
+            print("  NEO | Installation and management")
             print("  Ubuntu 22.04 / 24.04 - amd64")
             print("==================================================")
             print("  1  Install a new instance")

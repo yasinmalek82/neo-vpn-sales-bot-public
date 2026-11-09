@@ -67,17 +67,21 @@ async def get_balance(session: AsyncSession, user_id: int) -> int:
     return int(balance)
 
 
-async def _load_user_for_update(session: AsyncSession, user_id: int) -> User:
+async def _load_user_for_update(session: AsyncSession, user_id: int) -> tuple[User, int]:
     """Load user row with a real row lock on Postgres (``SELECT … FOR UPDATE``).
 
     SQLite ignores ``FOR UPDATE``; tests may approximate. Design target is PostgreSQL.
     Prefer calling inside an open transaction before balance mutation.
     """
-    result = await session.execute(select(User).where(User.id == user_id).with_for_update())
-    user = result.scalar_one_or_none()
-    if user is None:
+    # A row lock does not refresh an already-cached ORM object. Read the balance
+    # separately from the locked row, without overwriting unrelated pending fields.
+    result = await session.execute(
+        select(User, User.wallet_balance_toman).where(User.id == user_id).with_for_update()
+    )
+    row = result.one_or_none()
+    if row is None:
         raise WalletError("user_not_found")
-    return user
+    return row[0], int(row[1])
 
 
 async def _get_by_idempotency(
@@ -172,8 +176,8 @@ async def credit(
     if existing is not None:
         return existing, False
 
-    user = await _load_user_for_update(session, user_id)
-    new_balance = int(user.wallet_balance_toman) + int(amount_toman)
+    user, current_balance = await _load_user_for_update(session, user_id)
+    new_balance = current_balance + int(amount_toman)
     entry = WalletLedgerEntry(
         user_id=user_id,
         entry_type=WalletEntryType.credit,
@@ -212,8 +216,7 @@ async def debit(
     if existing is not None:
         return existing, False
 
-    user = await _load_user_for_update(session, user_id)
-    current = int(user.wallet_balance_toman)
+    user, current = await _load_user_for_update(session, user_id)
     need = int(amount_toman)
     if current < need:
         raise InsufficientWalletFunds(f"insufficient_funds:have={current}:need={need}")

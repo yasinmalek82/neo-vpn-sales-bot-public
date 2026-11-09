@@ -60,14 +60,18 @@ def verify_download(archive: Path, checksum: str) -> None:
 def download_release(
     tag: str, token: str, destination: Path, *, open_request: Callable[..., Any] | None = None
 ) -> Path:
-    if not re.fullmatch(r"test/installer-[0-9a-f]{12}", tag):
+    if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
+        name = f"neo-install-linux-amd64-{tag}.tar.gz"
+    elif re.fullmatch(r"test/installer-[0-9a-f]{12}", tag):
+        name = f"neo-test-install-linux-amd64-{tag.rsplit('-', 1)[1]}.tar.gz"
+    else:
         raise DownloadError("Invalid pinned release tag")
     opener = open_request or build_opener(PrivateRedirect()).open
 
     def request(url: str, accept: str) -> Request:
         headers = {
             "Accept": accept,
-            "User-Agent": "NEO-test-installer",
+            "User-Agent": "NEO-installer",
             "X-GitHub-Api-Version": "2022-11-28",
         }
         if token:
@@ -81,7 +85,6 @@ def download_release(
         metadata = json.loads(response.read(1024 * 1024 + 1))
     if not isinstance(metadata, dict) or metadata.get("tag_name") != tag or metadata.get("draft"):
         raise DownloadError("The pinned release is not published")
-    name = f"neo-test-install-linux-amd64-{tag.rsplit('-', 1)[1]}.tar.gz"
     entries = metadata.get("assets")
     if not isinstance(entries, list):
         raise DownloadError("Release asset metadata is invalid")
@@ -197,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         or os.geteuid() != 0
         or os.uname().machine not in {"x86_64", "amd64"}
     ):
-        print("Run with sudo on an Ubuntu amd64 test server.", file=sys.stderr)
+        print("Run with sudo on an Ubuntu amd64 server.", file=sys.stderr)
         return 1
     token = globals().pop("_NEO_GITHUB_TOKEN", "") or ""
     try:

@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import Settings
@@ -74,11 +74,20 @@ def _nonempty(value: str | None) -> str | None:
     return stripped or None
 
 
-async def get_settings_row(session: AsyncSession) -> PaymentSettings | None:
-    result = await session.execute(
-        select(PaymentSettings).where(PaymentSettings.id == PAYMENT_SETTINGS_ROW_ID)
-    )
-    return result.scalar_one_or_none()
+async def get_settings_row(session: AsyncSession, *, lock: bool = False) -> PaymentSettings | None:
+    query = select(PaymentSettings).where(PaymentSettings.id == PAYMENT_SETTINGS_ROW_ID)
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    return await session.scalar(query)
+
+
+async def bank_sms_auto_enabled(
+    session: AsyncSession, settings: Settings, *, lock: bool = False
+) -> bool:
+    if not settings.bank_sms_enabled:
+        return False
+    row = await get_settings_row(session, lock=lock)
+    return row is None or row.bank_sms_auto is not False
 
 
 async def get_payment_info(session: AsyncSession, settings: Settings) -> PaymentInfo:
@@ -157,3 +166,22 @@ async def clear_to_env(session: AsyncSession, *, admin_user_id: int | None = Non
     row.updated_at = datetime.now(UTC)
     row.updated_by_admin_id = admin_user_id
     await session.flush()
+
+
+async def set_bank_sms_auto(
+    session: AsyncSession, enabled: bool, *, admin_user_id: int | None
+) -> None:
+    values = {
+        "bank_sms_auto": enabled,
+        "updated_at": datetime.now(UTC),
+        "updated_by_admin_id": admin_user_id,
+    }
+    updated = await session.scalar(
+        update(PaymentSettings)
+        .where(PaymentSettings.id == PAYMENT_SETTINGS_ROW_ID)
+        .values(**values)
+        .returning(PaymentSettings.id)
+    )
+    if updated is None:
+        session.add(PaymentSettings(id=PAYMENT_SETTINGS_ROW_ID, **values))
+        await session.flush()

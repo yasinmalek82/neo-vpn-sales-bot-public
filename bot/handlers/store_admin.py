@@ -60,8 +60,10 @@ from bot.keyboards.store_admin import (
 )
 from bot.states import AdminStates
 from bot.texts import texts
+from database.base import end_read_transaction
 from database.models import User
 from database.models.store import StoreCategory, StorePackage, StorePackageKind
+from services.bank_invoices import require_bank_sms_config
 from services.group_sync import (
     accounts_of_category,
     move_accounts_to_groups,
@@ -74,9 +76,11 @@ from services.payment_settings import (
 from services.payment_settings import (
     PaymentInfo,
     PaymentSettingsError,
+    bank_sms_auto_enabled,
     format_card_number,
     get_payment_info,
     save_payment_field,
+    set_bank_sms_auto,
 )
 from services.payment_settings import clear_to_env as clear_payment_to_env
 from services.payment_settings import validate_field as validate_payment_field
@@ -2296,7 +2300,7 @@ def _pay_mark(info: PaymentInfo, field: str, shown: str) -> str:
 
 async def _pay_screen_text(
     session: AsyncSession, settings: Settings, *, prefix: str = ""
-) -> tuple[str, PaymentInfo]:
+) -> tuple[str, PaymentInfo, bool | None]:
     info = await get_payment_info(session, settings)
     body = texts.admin_store_pay_title.format(
         card=_pay_mark(info, "card_number", format_card_number(info.card_number)),
@@ -2309,7 +2313,13 @@ async def _pay_screen_text(
             else texts.admin_store_pay_note_env
         ),
     )
-    return prefix + body, info
+    auto = await bank_sms_auto_enabled(session, settings) if settings.bank_sms_enabled else None
+    mode = {
+        True: texts.admin_store_pay_mode_auto,
+        False: texts.admin_store_pay_mode_manual,
+        None: texts.admin_store_pay_mode_unconfigured,
+    }[auto]
+    return prefix + body + "\n\n" + texts.admin_store_pay_mode.format(mode=mode), info, auto
 
 
 async def _show_pay_screen(
@@ -2320,8 +2330,11 @@ async def _show_pay_screen(
     *,
     prefix: str = "",
 ) -> None:
-    body, info = await _pay_screen_text(session, settings, prefix=prefix)
-    kb = store_pay_keyboard(can_edit=_owner(settings, tg_id), has_override=info.has_override)
+    body, info, auto = await _pay_screen_text(session, settings, prefix=prefix)
+    kb = store_pay_keyboard(
+        can_edit=_owner(settings, tg_id), has_override=info.has_override, auto=auto
+    )
+    await end_read_transaction(session)
     await _edit_or_answer(message, body, kb)
 
 
@@ -2341,6 +2354,39 @@ async def store_pay_display(
     if message is None:
         return
     await _show_pay_screen(message, session, settings, callback.from_user.id)
+
+
+@router.callback_query(F.data.in_({StoreCB.PAY_MODE_ON, StoreCB.PAY_MODE_OFF}))
+async def store_pay_set_mode(
+    callback: CallbackQuery,
+    settings: Settings,
+    db_user: User | None,
+    session: AsyncSession,
+) -> None:
+    if await _deny_if_not_admin(callback, settings, db_user):
+        return
+    if not settings.bank_sms_enabled:
+        await callback.answer(texts.admin_store_pay_mode_unavailable, show_alert=True)
+        return
+    enabled = callback.data == StoreCB.PAY_MODE_ON
+    if enabled:
+        try:
+            require_bank_sms_config(settings)
+        except RuntimeError:
+            await callback.answer(texts.admin_store_pay_mode_unavailable, show_alert=True)
+            return
+    try:
+        await set_bank_sms_auto(session, enabled, admin_user_id=db_user.id if db_user else None)
+        await session.commit()
+    except Exception:
+        logger.exception("payment mode save failed")
+        await session.rollback()
+        await callback.answer(texts.admin_action_error, show_alert=True)
+        return
+    await callback.answer(texts.admin_store_saved)
+    message = _tg_message(callback)
+    if message is not None:
+        await _show_pay_screen(message, session, settings, callback.from_user.id)
 
 
 @router.callback_query(F.data.startswith(StoreCB.PAY_EDIT))
@@ -2419,11 +2465,12 @@ async def store_pay_input(
         await message.answer(texts.admin_action_error, reply_markup=store_back_hub_keyboard())
         return
     await state.clear()
-    body, info = await _pay_screen_text(
+    body, info, auto = await _pay_screen_text(
         session, settings, prefix=texts.admin_store_pay_saved + "\n\n"
     )
     await message.answer(
-        body, reply_markup=store_pay_keyboard(can_edit=True, has_override=info.has_override)
+        body,
+        reply_markup=store_pay_keyboard(can_edit=True, has_override=info.has_override, auto=auto),
     )
 
 
@@ -2484,7 +2531,7 @@ async def store_pay_clear_confirm(
     message = _tg_message(callback)
     if message is None:
         return
-    current, _info = await _pay_screen_text(session, settings)
+    current, _info, _auto = await _pay_screen_text(session, settings)
     await _edit_or_answer(
         message,
         texts.admin_store_pay_clear_confirm.format(current=current),

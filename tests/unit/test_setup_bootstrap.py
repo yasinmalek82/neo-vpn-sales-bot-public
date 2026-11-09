@@ -9,14 +9,17 @@ import signal
 import time
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_piped_launcher_resolves_latest_and_keeps_prompts(tmp_path):
+@pytest.mark.parametrize("tag", ["test/installer-123456abcdef", "v1.0.0"])
+def test_piped_launcher_resolves_latest_and_keeps_prompts(tmp_path, tag):
     """Without /dev/tty, input() reads EOF from the consumed shell script pipe."""
     (tmp_path / "sitecustomize.py").write_text(
         "import io, json, urllib.request\n"
-        "tag = 'test/installer-123456abcdef'\n"
+        f"tag = {tag!r}\n"
         "def urlopen(url, timeout):\n"
         "    assert timeout == 60\n"
         "    if isinstance(url, urllib.request.Request):\n"
@@ -27,7 +30,7 @@ def test_piped_launcher_resolves_latest_and_keeps_prompts(tmp_path):
         "    assert url == 'https://raw.githubusercontent.com/yasinmalek82/"
         "neo-vpn-sales-bot-public/' + tag + '/scripts/github_install.py'\n"
         '    return io.BytesIO(b"import sys; assert sys.argv == '
-        "['neo-install', '--release', 'test/installer-123456abcdef', '--no-swap']; "
+        f"['neo-install', '--release', '{tag}', '--no-swap']; "
         "assert input('INSTALLER_READY: ') == 'continue'; "
         "print('DOWNLOADED_INSTALLER_EXECUTED', flush=True); raise SystemExit(7)\")\n"
         "urllib.request.urlopen = urlopen\n"

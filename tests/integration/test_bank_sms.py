@@ -303,3 +303,72 @@ async def test_outer_rollback_removes_bank_event_approval_and_wallet_credit(two_
         assert await session.scalar(select(func.count()).select_from(WalletLedgerEntry)) == 0
         assert await session.scalar(select(func.count()).select_from(BankSmsEvent)) == 0
     assert (await accept(factory, invoice.amount_toman)).outcome == "approved"
+
+
+@pytest.mark.asyncio
+async def test_customer_cancel_releases_checkout_and_keeps_late_sms_for_review(two_sessions):
+    from services.finance import apply_checkout_debit
+    from services.orders import get_open_order
+    from services.payments import cancel_unpaid_order
+    from services.wallet import credit, get_balance
+
+    factory, _ = two_sessions
+    customer_id, other_id, order_id = await seed(factory)
+    async with factory() as session:
+        await credit(
+            session,
+            user_id=customer_id,
+            amount_toman=50_000,
+            reason="manual_adjustment",
+            idempotency_key="qa-credit",
+        )
+        order = await session.get(Order, order_id)
+        order.wallet_applied_toman = 50_000
+        await apply_checkout_debit(session, user_id=customer_id, order=order)
+        await session.commit()
+    invoice = await reserve(factory, order_id)
+    async with factory() as session:
+        assert not await cancel_unpaid_order(session, order_id=order_id, user_id=other_id)
+        assert await cancel_unpaid_order(session, order_id=order_id, user_id=customer_id)
+        await session.commit()
+    async with factory() as session:
+        assert await get_open_order(session, customer_id) is None
+        assert await get_balance(session, customer_id) == 50_000
+        assert not await cancel_unpaid_order(session, order_id=order_id, user_id=customer_id)
+    assert (await accept(factory, invoice.amount_toman)).outcome == "manual_review"
+
+
+@pytest.mark.asyncio
+async def test_manual_order_with_same_amount_makes_existing_auto_invoice_ambiguous(two_sessions):
+    from database.models import User
+    from services.bank_invoices import reserve_bank_invoice
+    from services.payment_settings import set_bank_sms_auto
+
+    factory, _ = two_sessions
+    _, admin_id, order_id = await seed(factory)
+    invoice = await reserve(factory, order_id)
+    async with factory() as session:
+        await set_bank_sms_auto(session, False, admin_user_id=admin_id)
+        order = await session.get(Order, order_id)
+        buyer = User(telegram_id=222, referral_code="manual-customer")
+        session.add(buyer)
+        await session.flush()
+        manual = Order(
+            user_id=buyer.id,
+            plan_id=order.plan_id,
+            price_toman=invoice.amount_toman,
+            status=OrderStatus.PENDING_PAYMENT,
+            created_at=NOW - timedelta(minutes=1),
+        )
+        session.add(manual)
+        await session.flush()
+        assert await reserve_bank_invoice(session, config(), order_id=manual.id, now=NOW) is None
+        await session.commit()
+    async with factory() as session:
+        await set_bank_sms_auto(session, True, admin_user_id=admin_id)
+        await session.commit()
+
+    assert (await accept(factory, invoice.amount_toman)).outcome == "manual_review"
+    async with factory() as session:
+        assert (await session.get(Order, order_id)).status == OrderStatus.PENDING_PAYMENT
+        assert await session.scalar(select(func.count()).select_from(Payment)) == 0

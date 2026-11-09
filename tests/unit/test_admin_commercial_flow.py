@@ -19,6 +19,7 @@ import database.models  # noqa: F401  (registers mappers)
 from api_client.exceptions import PasarGuardAPIError, PasarGuardNotFoundError
 from api_client.models import UserResponse, UserStatus
 from bot.handlers import admin as admin_handlers
+from bot.handlers import admin_wallet as wallet_handlers
 from bot.handlers import store_admin
 from bot.keyboards.admin import AdminCB
 from bot.keyboards.admin_payment import PayCB
@@ -251,21 +252,21 @@ async def test_approving_a_receipt_provisions_the_service(
 async def test_wallet_adjust_credits_the_ledger_and_refuses_junk(
     session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _screen(monkeypatch, admin_handlers)
+    _screen(monkeypatch, wallet_handlers)
     admin = await _admin(session)
     customer = User(telegram_id=8002, referral_code="BUY8002", first_name="علی")
     session.add(customer)
     await session.commit()
     state = _state()
     bot = SimpleNamespace(send_message=AsyncMock())
-    await admin_handlers.admin_wallet_start(
+    await wallet_handlers.admin_wallet_start(
         _callback(f"{AdminCB.WALLET_ADD}{customer.id}"),  # type: ignore[arg-type]
         state,
         session,
         _settings(),  # type: ignore[arg-type]
         admin,
     )
-    await admin_handlers.admin_wallet_amount(
+    await wallet_handlers.admin_wallet_amount(
         SimpleNamespace(  # type: ignore[arg-type]
             text="abc",
             from_user=SimpleNamespace(id=ADMIN_ID),
@@ -280,7 +281,7 @@ async def test_wallet_adjust_credits_the_ledger_and_refuses_junk(
     assert await get_balance(session, customer.id) == 0
     assert (await state.get_data()).get("wallet_amount") is None
 
-    await admin_handlers.admin_wallet_amount(
+    await wallet_handlers.admin_wallet_amount(
         SimpleNamespace(  # type: ignore[arg-type]
             text="۰",
             from_user=SimpleNamespace(id=ADMIN_ID),
@@ -294,7 +295,7 @@ async def test_wallet_adjust_credits_the_ledger_and_refuses_junk(
     )
     assert await get_balance(session, customer.id) == 0
 
-    await admin_handlers.admin_wallet_amount(
+    await wallet_handlers.admin_wallet_amount(
         SimpleNamespace(  # type: ignore[arg-type]
             text="۵۰٬۰۰۰",
             from_user=SimpleNamespace(id=ADMIN_ID),
@@ -306,7 +307,7 @@ async def test_wallet_adjust_credits_the_ledger_and_refuses_junk(
         _settings(),  # type: ignore[arg-type]
         admin,
     )
-    await admin_handlers.admin_wallet_apply(
+    await wallet_handlers.admin_wallet_apply(
         _callback(f"{AdminCB.WALLET_OK}{customer.id}"),  # type: ignore[arg-type]
         state,
         session,

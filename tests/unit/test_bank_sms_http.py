@@ -118,6 +118,10 @@ async def test_invoice_screen_shows_exact_amount_and_wallet_return(two_sessions)
     body = message.body.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٬", "0123456789,"))
     assert f"<b>{invoice.amount_toman * 10:,}</b> ریال" in body
     assert message.keyboard.inline_keyboard[0][-1].copy_text.text == str(invoice.amount_toman * 10)
+    callbacks = {button.callback_data for row in message.keyboard.inline_keyboard for button in row}
+    assert f"paycancel:{order_id}" in callbacks
+    assert f"payreceipt:{order_id}" in callbacks
+    assert f"{invoice.suffix_toman * 10:,} ریال" in body
     assert "کیف پول" in body
     assert (await state.get_data())["pending_amount"] == invoice.amount_toman
     await storage.close()

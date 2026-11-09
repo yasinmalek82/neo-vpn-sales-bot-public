@@ -30,6 +30,22 @@ logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 
 
+class _QuietFastWorkerInfo(logging.Filter):
+    """Keep frequent idle polls from filling logs; retain warnings and errors."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if (
+            record.levelno == logging.INFO
+            and record.msg
+            in ('Running job "%s" (scheduled at %s)', 'Job "%s" executed successfully')
+            and isinstance(record.args, tuple)
+            and record.args
+            and getattr(record.args[0], "id", None) in ("provision_recovery", "delivery_flush")
+        ):
+            return False
+        return True
+
+
 def get_scheduler() -> AsyncIOScheduler | None:
     return _scheduler
 
@@ -48,11 +64,14 @@ def setup_scheduler(
     if _scheduler is not None and _scheduler.running:
         return _scheduler
 
+    executor_log = logging.getLogger("apscheduler.executors.default")
+    if not any(isinstance(log_filter, _QuietFastWorkerInfo) for log_filter in executor_log.filters):
+        executor_log.addFilter(_QuietFastWorkerInfo())
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         run_delivery_flush,
         trigger="interval",
-        seconds=30,
+        seconds=5,
         id="delivery_flush",
         replace_existing=True,
         max_instances=1,
@@ -62,7 +81,7 @@ def setup_scheduler(
     scheduler.add_job(
         run_provision_recovery,
         trigger="interval",
-        seconds=60,
+        seconds=5,
         id="provision_recovery",
         replace_existing=True,
         max_instances=1,

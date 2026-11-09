@@ -207,6 +207,7 @@ def service_detail_keyboard(
     account_id: int,
     *,
     has_link: bool,
+    subscription_url: str | None = None,
     show_renew: bool = False,
     can_rename: bool = False,
     is_trial: bool = False,
@@ -238,9 +239,13 @@ def service_detail_keyboard(
             callback_data=AccountCB.svc_renew(account_id),
         )
     )
-    howto = InlineKeyboardButton(
-        text="📖 راهنمای اتصال",
-        callback_data=AccountCB.svc_howto(account_id),
+    connect = (
+        InlineKeyboardButton(text="🔗 باز کردن لینک سابسکریپشن", url=subscription_url)
+        if subscription_url
+        else InlineKeyboardButton(
+            text="📖 راهنمای اتصال",
+            callback_data=AccountCB.svc_howto(account_id),
+        )
     )
     refresh = InlineKeyboardButton(
         text="🔄 به‌روزرسانی",
@@ -251,9 +256,9 @@ def service_detail_keyboard(
         primary = renew
         primary.style = styled(PRIMARY)
         if has_link:
-            secondary.append(howto)
+            secondary.append(connect)
     elif has_link:
-        primary = howto
+        primary = connect
         primary.style = styled(PRIMARY)
         secondary.append(renew)
     else:

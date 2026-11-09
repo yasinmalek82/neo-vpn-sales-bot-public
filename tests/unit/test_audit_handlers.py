@@ -141,7 +141,7 @@ async def _user(session: AsyncSession, tg: int) -> int:
 async def test_old_wallet_confirm_button_cannot_apply_another_customers_amount(
     session: AsyncSession,
 ) -> None:
-    from bot.handlers import admin as admin_handlers
+    from bot.handlers import admin_wallet as admin_handlers
     from bot.keyboards.admin import AdminCB
 
     cust_a = await _user(session, 601)

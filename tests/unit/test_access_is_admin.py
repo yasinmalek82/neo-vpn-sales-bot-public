@@ -14,7 +14,7 @@ import pytest
 
 from bot.config import Settings
 from bot.handlers import admin as admin_handlers
-from bot.handlers import common
+from bot.handlers import admin_access, common
 from services.access import is_admin
 
 ENV_ADMIN = 111
@@ -55,7 +55,7 @@ def test_the_bot_functions_delegate_to_the_shared_check(
     name: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """If a handler grows its own body again, this goes red."""
-    module = common if name == "common" else admin_handlers
-    func = module.is_admin if name == "common" else module._is_admin
+    module = common if name == "common" else admin_access
+    func = common.is_admin if name == "common" else admin_handlers._is_admin
     monkeypatch.setattr(module, "access_is_admin", lambda *_a, **_k: "shared")
     assert func(NOT_LISTED, _settings(), None) == "shared"

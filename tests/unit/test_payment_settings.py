@@ -344,7 +344,15 @@ async def test_reset_to_env_asks_first_and_then_restores(
 def test_payment_callbacks_fit_and_do_not_swallow_each_other() -> None:
     values = {n: v for n, v in vars(StoreCB).items() if n.isupper() and isinstance(v, str)}
     new = {n: v for n, v in values.items() if n.startswith("PAY")}
-    assert len(new) == 5
+    assert set(new) == {
+        "PAY",
+        "PAY_EDIT",
+        "PAY_CARD_OK",
+        "PAY_CLEAR",
+        "PAY_CLEAR_OK",
+        "PAY_MODE_ON",
+        "PAY_MODE_OFF",
+    }
     for name, value in new.items():
         assert len(value.encode()) <= 64
         for other_name, other in values.items():

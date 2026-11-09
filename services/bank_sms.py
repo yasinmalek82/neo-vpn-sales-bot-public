@@ -14,9 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.config import Settings
 from database.models import Order, OrderStatus
 from database.models.bank_sms import BankInvoice, BankSmsEvent
-from services.bank_invoices import aware, card_digest, require_bank_sms_config, reserve_bank_invoice
+from services.bank_invoices import (
+    aware,
+    card_digest,
+    manual_card_amounts,
+    require_bank_sms_config,
+    reserve_bank_invoice,
+)
 from services.finance import has_valid_checkout_debit_for_order
-from services.payment_settings import get_payment_info
+from services.payment_settings import PaymentSettingsError, bank_sms_auto_enabled, get_payment_info
 from services.payments import approve_bank_notification
 from services.report_events import bank_sms_manual_review
 from services.report_outbox import enqueue_report
@@ -110,9 +116,11 @@ async def receive_bank_sms(
     )
     if invoice is not None:
         event.order_id = invoice.order_id
-    if invoice is not None and moment - timedelta(
-        hours=24
-    ) <= credit.occurred_at <= moment + timedelta(minutes=1):
+    if (
+        invoice is not None
+        and moment - timedelta(hours=24) <= credit.occurred_at <= moment + timedelta(minutes=1)
+        and await bank_sms_auto_enabled(session, settings, lock=True)
+    ):
         order = await session.scalar(
             select(Order)
             .where(Order.id == invoice.order_id)
@@ -120,6 +128,18 @@ async def receive_bank_sms(
             .execution_options(populate_existing=True)
         )
         info = await get_payment_info(session, settings)
+        try:
+            current_card_digest = card_digest(info.card_number)
+        except PaymentSettingsError:
+            current_card_digest = None
+        ambiguous = await session.scalar(
+            manual_card_amounts()
+            .where(
+                Order.price_toman - Order.wallet_applied_toman == credit.amount_toman,
+                Order.created_at < credit.occurred_at + timedelta(minutes=1),
+            )
+            .limit(1)
+        )
         base_due = (
             max(0, int(order.price_toman) - int(order.wallet_applied_toman or 0)) if order else 0
         )
@@ -130,7 +150,8 @@ async def receive_bank_sms(
             <= credit.occurred_at
             < aware(invoice.expires_at)
             and moment < aware(invoice.expires_at)
-            and invoice.card_digest == card_digest(info.card_number)
+            and invoice.card_digest == current_card_digest
+            and ambiguous is None
             and base_due == invoice.base_due_toman
             and await has_valid_checkout_debit_for_order(session, order)
         ):

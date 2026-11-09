@@ -86,7 +86,7 @@ async def test_send_service_card_photo_with_keyboard_and_text_fallback() -> None
     assert "سرویس سفارش #7 آماده‌ست." in kwargs["caption"]
     assert kwargs["reply_markup"] is not None
     callbacks = [btn.callback_data for row in kwargs["reply_markup"].inline_keyboard for btn in row]
-    assert any(cb and "howto" in cb for cb in callbacks)
+    assert kwargs["reply_markup"].inline_keyboard[0][0].url == "https://sub.example/x"
     assert any(cb and "revoke" in cb for cb in callbacks)
 
     # QR failure → text fallback
@@ -95,6 +95,8 @@ async def test_send_service_card_photo_with_keyboard_and_text_fallback() -> None
         await send_service_card(overview=overview, settings=settings, message=message2)
     message2.answer.assert_awaited_once()
     message2.answer_photo.assert_not_awaited()
+    fallback = message2.answer.await_args.kwargs["reply_markup"]
+    assert fallback.inline_keyboard[0][0].url == "https://sub.example/x"
 
     # bot.send_photo path
     bot = AsyncMock()

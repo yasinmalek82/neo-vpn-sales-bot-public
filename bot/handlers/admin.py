@@ -31,6 +31,7 @@ from api_client.models import GroupResponse, GroupSimple
 from bot.admin_home import admin_home_screen
 from bot.config import Settings
 from bot.delivery import deliver_provisioned_service_card, service_qr_png
+from bot.handlers.admin_access import _deny_if_not_admin, _is_admin
 from bot.handlers.common import edit_or_send
 from bot.keyboards.admin import (
     PAGE_SIZE,
@@ -55,7 +56,6 @@ from bot.keyboards.admin import (
     customer_order_label,
     customer_orders_keyboard,
     customer_referrals_keyboard,
-    customer_results_keyboard,
     customer_services_keyboard,
     gift_confirm_keyboard,
     gift_groups_keyboard,
@@ -87,9 +87,6 @@ from bot.keyboards.admin import (
     service_link_revoke_confirm_keyboard,
     service_ops_keyboard,
     service_toggle_confirm_keyboard,
-    users_list_keyboard,
-    wallet_confirm_keyboard,
-    wallet_zero_confirm_keyboard,
 )
 from bot.keyboards.admin_payment import (
     REJECT_QUICK_REASONS,
@@ -105,12 +102,12 @@ from bot.keyboards.store_admin import plan_button_label
 from bot.media import answer_stored_media
 from bot.states import AdminStates
 from bot.texts import texts
+from database.base import end_read_transaction
 from database.models import Order, OrderStatus, User
 from database.models.broadcast import Broadcast, BroadcastAudience, BroadcastState
 from database.models.pasarguard_account import PasarGuardAccount
 from database.models.payment import PaymentStatus
 from database.models.report import TOPIC_KEYS, TOPIC_TITLES_FA
-from services.access import is_admin as access_is_admin
 from services.admin import (
     AdminError,
     dashboard_counts,
@@ -156,23 +153,15 @@ from services.broadcast import (
 from services.compensation import UnusedValue, unused_value_for_account
 from services.customer_card import CardFacts, card_facts, customer_name, role_label
 from services.customer_lookup import (
-    USER_FILTER_LABELS,
     CustomerCard,
     ManualAdjustError,
-    UserFilter,
-    WalletAdjustRefused,
-    apply_wallet_adjustment,
     count_customer_orders,
     count_customer_referrals,
-    find_customers,
     get_customer_card,
     list_customer_orders,
     list_customer_referrals,
-    list_users,
     parse_signed_toman,
-    preview_wallet_adjustment,
     reset_trial,
-    zero_wallet,
 )
 from services.finance import is_terminal_wallet_provision_rejection
 from services.orders import get_open_order, order_is_delivered
@@ -198,9 +187,6 @@ from services.panel_status import (
 from services.payments import (
     PaymentError,
     approve_payment,
-    late_receipt_credited,
-    late_receipt_order_id,
-    late_receipt_stamp,
     reject_payment,
 )
 from services.provisioning import provision_order
@@ -290,27 +276,6 @@ def _sanitize_error_detail(exc: BaseException, *, limit: int = 240) -> str:
         if token in lowered:
             return exc.__class__.__name__
     return raw[:limit]
-
-
-def _is_admin(
-    telegram_id: int | None,
-    settings: Settings,
-    db_user: User | None = None,
-) -> bool:
-    """Match Phase 4 telegram-id list and menu is_admin (middleware keeps them in sync)."""
-    return access_is_admin(telegram_id, settings, db_user)
-
-
-async def _deny_if_not_admin(
-    callback: CallbackQuery,
-    settings: Settings,
-    db_user: User | None,
-) -> bool:
-    tg_id = callback.from_user.id if callback.from_user else None
-    if not _is_admin(tg_id, settings, db_user):
-        await callback.answer(texts.admin_action_denied, show_alert=True)
-        return True
-    return False
 
 
 def _tg_message(callback: CallbackQuery) -> Message | None:
@@ -2156,79 +2121,24 @@ def _card_text(card: CustomerCard) -> str:
 
 async def _show_customer(message: Message, session: AsyncSession, user_id: int) -> None:
     card = await get_customer_card(session, user_id)
-    await _edit_or_answer_admin(
-        message,
-        _card_text(card),
-        customer_card_keyboard(
-            user_id,
-            banned=card.is_banned,
-            services=card.services,
-            trial_taken=card.has_taken_trial,
-            reseller=bool(card.user.is_reseller),
-            wallet_toman=int(card.wallet_balance_toman or 0),
-            orders_total=int(card.orders_total or 0),
-            legacy_records_total=card.legacy_records_total,
-            referrer_id=int(card.user.referred_by_id) if card.user.referred_by_id else None,
-        ),
+    body = _card_text(card)
+    markup = customer_card_keyboard(
+        user_id,
+        banned=card.is_banned,
+        services=card.services,
+        trial_taken=card.has_taken_trial,
+        reseller=bool(card.user.is_reseller),
+        wallet_toman=int(card.wallet_balance_toman or 0),
+        orders_total=int(card.orders_total or 0),
+        legacy_records_total=card.legacy_records_total,
+        referrer_id=int(card.user.referred_by_id) if card.user.referred_by_id else None,
     )
+    await end_read_transaction(session)
+    await _edit_or_answer_admin(message, body, markup)
 
 
 async def _edit_or_answer_admin(message: Message, body: str, markup: InlineKeyboardMarkup) -> None:
     await edit_or_send(message, body, markup)
-
-
-_USER_FILTER_ROW = [(f.value, USER_FILTER_LABELS[f]) for f in UserFilter]
-
-
-async def _show_users_page(
-    message: Message,
-    session: AsyncSession,
-    offset: int,
-    user_filter: UserFilter = UserFilter.ALL,
-) -> None:
-    page = await list_users(session, offset=offset, user_filter=user_filter)
-    keyboard = users_list_keyboard(page, filters=_USER_FILTER_ROW)
-    if not page.rows:
-        # «هیچ کاربری با این فیلتر نیست» is a different fact from «هنوز کاربری
-        # نداریم», and an owner who confuses the two thinks the panel is broken.
-        body = (
-            texts.admin_users_empty
-            if user_filter is UserFilter.ALL
-            else texts.admin_users_filter_empty.format(label=USER_FILTER_LABELS[user_filter])
-        )
-        await _edit_or_answer_admin(message, body, keyboard)
-        return
-    body = texts.admin_users_title.format(
-        label=USER_FILTER_LABELS[user_filter],
-        total=to_persian_digits(page.total),
-        first=to_persian_digits(page.offset + 1),
-        last=to_persian_digits(page.offset + len(page.rows)),
-    )
-    await _edit_or_answer_admin(message, body, keyboard)
-
-
-@router.callback_query(F.data == AdminCB.CUSTOMER)
-async def admin_users_list(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    """The section opens on a **list** now.
-
-    It used to jump straight to a search prompt, so an admin who did not
-    already know a name or id had no way in — and no way to answer «چند تا
-    کاربر داریم؟». Search is still here, one tap inside the list.
-    """
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    await state.clear()
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    await _show_users_page(message, session, 0)
 
 
 _RESELLERS_LIST_CAP = 30
@@ -2271,109 +2181,6 @@ async def admin_resellers_list(
         )
     body = f"{body}\n{texts.admin_resellers_month_hint}"
     await _edit_or_answer_admin(message, body, admin_resellers_keyboard(shown, stats))
-
-
-def _parse_user_filter(raw: str) -> UserFilter:
-    """Unknown or stale values fall back to «همه» rather than erroring — a
-    filter from an older version of the keyboard should still open a screen."""
-    try:
-        return UserFilter(raw)
-    except ValueError:
-        return UserFilter.ALL
-
-
-@router.callback_query(F.data.startswith(AdminCB.CUSTOMER_PAGE))
-async def admin_users_page(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    raw = (callback.data or "")[len(AdminCB.CUSTOMER_PAGE) :]
-    filter_value, _, offset_raw = raw.partition(":")
-    if not offset_raw.isdigit():
-        await callback.answer(texts.admin_panel_invalid, show_alert=True)
-        return
-    await state.clear()
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    await _show_users_page(message, session, int(offset_raw), _parse_user_filter(filter_value))
-
-
-@router.callback_query(F.data.startswith(AdminCB.CUSTOMER_FILTER))
-async def admin_users_filter(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    """Switching filter starts at the top: staying on page 3 of a list that now
-    has four rows would show an empty screen and look broken."""
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    raw = (callback.data or "")[len(AdminCB.CUSTOMER_FILTER) :]
-    await state.clear()
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    await _show_users_page(message, session, 0, _parse_user_filter(raw))
-
-
-@router.callback_query(F.data == AdminCB.CUSTOMER_SEARCH)
-async def admin_customer_start(
-    callback: CallbackQuery,
-    state: FSMContext,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    await state.clear()
-    await state.set_state(AdminStates.waiting_customer_query)
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    await _edit_or_answer_admin(message, texts.admin_customer_prompt, admin_cancel_input_keyboard())
-
-
-@router.message(AdminStates.waiting_customer_query)
-async def admin_customer_search(
-    message: Message,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    if not _is_admin(message.from_user.id if message.from_user else None, settings, db_user):
-        await state.clear()
-        await message.answer(texts.admin_action_denied, reply_markup=admin_back_home_keyboard())
-        return
-    query = (message.text or "").strip()
-    matches = await find_customers(session, query)
-    if not matches:
-        await message.answer(
-            texts.admin_customer_none.format(query=escape(query)),
-            reply_markup=admin_cancel_input_keyboard(),
-        )
-        return
-    await state.clear()
-    if len(matches) == 1:
-        await _show_customer(message, session, int(matches[0].id))
-        return
-    await message.answer(
-        texts.admin_customer_results.format(
-            count=to_persian_digits(len(matches)), query=escape(query)
-        ),
-        reply_markup=customer_results_keyboard(matches),
-    )
 
 
 async def _customer_id_from(callback: CallbackQuery, prefix: str) -> int | None:
@@ -2669,64 +2476,6 @@ async def admin_customer_trial_reset(
     message = _tg_message(callback)
     if message is not None:
         await _show_customer(message, session, user_id)
-
-
-@router.callback_query(F.data.startswith(AdminCB.WALLET_ZERO_OK))
-async def admin_wallet_zero_apply(
-    callback: CallbackQuery,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    user_id = await _customer_id_from(callback, AdminCB.WALLET_ZERO_OK)
-    if user_id is None:
-        return
-    tg_id = callback.from_user.id if callback.from_user else 0
-    try:
-        removed = await zero_wallet(session, user_id=user_id, admin_telegram_id=int(tg_id))
-        await session.commit()
-    except ManualAdjustError as exc:
-        await session.rollback()
-        await callback.answer(str(exc)[:190], show_alert=True)
-        return
-    await callback.answer(texts.admin_wallet_zero_done.format(amount=_fmt_toman(removed)))
-    message = _tg_message(callback)
-    if message is not None:
-        await _show_customer(message, session, user_id)
-
-
-@router.callback_query(F.data.startswith(AdminCB.WALLET_ZERO))
-async def admin_wallet_zero_ask(
-    callback: CallbackQuery,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    """Zeroing a wallet is taking money away — it gets a confirmation."""
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    if (callback.data or "").startswith(AdminCB.WALLET_ZERO_OK):
-        return
-    user_id = await _customer_id_from(callback, AdminCB.WALLET_ZERO)
-    if user_id is None:
-        return
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    card = await get_customer_card(session, user_id)
-    if card.wallet_balance_toman <= 0:
-        await _edit_or_answer_admin(
-            message, texts.admin_wallet_zero_already, back_to_customer_keyboard(user_id)
-        )
-        return
-    body = texts.admin_wallet_zero_confirm.format(
-        name=escape(_customer_name(card.user)),
-        amount=_fmt_toman(card.wallet_balance_toman),
-    )
-    await _edit_or_answer_admin(message, body, wallet_zero_confirm_keyboard(user_id))
 
 
 @router.callback_query(F.data.startswith(AdminCB.CUST_DM))
@@ -3894,176 +3643,8 @@ async def admin_reseller_number_save(  # noqa: PLR0911
     )
 
 
-@router.callback_query(F.data.startswith(AdminCB.CUSTOMER_PICK))
-async def admin_customer_pick(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    raw = (callback.data or "")[len(AdminCB.CUSTOMER_PICK) :]
-    if not raw.isdigit():
-        await callback.answer(texts.admin_invalid_id, show_alert=True)
-        return
-    await state.clear()
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    try:
-        await _show_customer(message, session, int(raw))
-    except ManualAdjustError as exc:
-        await _edit_or_answer_admin(message, str(exc), admin_back_home_keyboard())
-
-
-@router.callback_query(F.data.startswith(AdminCB.WALLET_ADD))
-async def admin_wallet_start(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    raw = (callback.data or "")[len(AdminCB.WALLET_ADD) :]
-    if not raw.isdigit():
-        await callback.answer(texts.admin_invalid_id, show_alert=True)
-        return
-    target = await session.get(User, int(raw))
-    if target is None:
-        await callback.answer(texts.admin_user_not_found, show_alert=True)
-        return
-    await state.clear()
-    await state.update_data(wallet_user_id=int(raw))
-    await state.set_state(AdminStates.waiting_wallet_amount)
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    await _edit_or_answer_admin(
-        message,
-        texts.admin_wallet_prompt.format(
-            name=escape(_customer_name(target)),
-            wallet=_fmt_toman(int(target.wallet_balance_toman or 0)),
-        ),
-        admin_cancel_input_keyboard(),
-    )
-
-
 # Kept under its old name: the report-group setup parses a chat id with it too.
 _parse_signed_toman = parse_signed_toman
-
-
-@router.message(AdminStates.waiting_wallet_amount)
-async def admin_wallet_amount(
-    message: Message,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    if not _is_admin(message.from_user.id if message.from_user else None, settings, db_user):
-        await state.clear()
-        await message.answer(texts.admin_action_denied, reply_markup=admin_back_home_keyboard())
-        return
-    data = await state.get_data()
-    user_id = data.get("wallet_user_id")
-    if not user_id:
-        await state.clear()
-        await message.answer(texts.admin_action_error, reply_markup=admin_back_home_keyboard())
-        return
-    try:
-        preview = await preview_wallet_adjustment(
-            session, user_id=int(user_id), raw_amount=message.text or ""
-        )
-    except WalletAdjustRefused as refused:
-        if refused.kind == "user_not_found":
-            await state.clear()
-            await message.answer(str(refused), reply_markup=admin_back_home_keyboard())
-        else:
-            await message.answer(str(refused), reply_markup=admin_cancel_input_keyboard())
-        return
-    target, amount, balance = preview.user, preview.amount_toman, preview.balance_toman
-    # Hold the amount until the confirmation tap; nothing is written yet.
-    stamp = f"{message.message_id}"
-    await state.update_data(wallet_amount=amount, wallet_stamp=stamp)
-    await message.answer(
-        texts.admin_wallet_confirm.format(
-            name=escape(_customer_name(target)),
-            verb=(texts.admin_wallet_verb_credit if amount > 0 else texts.admin_wallet_verb_debit),
-            amount=_fmt_toman(abs(amount)),
-            after=_fmt_toman(balance + amount),
-        ),
-        reply_markup=wallet_confirm_keyboard(int(user_id)),
-    )
-
-
-def _late_receipt_order_id(data: str | None, prefix: str) -> int | None:
-    raw = (data or "")[len(prefix) :]
-    return int(raw) if raw.isdigit() else None
-
-
-@router.callback_query(F.data.startswith(AdminCB.LATE_CREDIT))
-async def admin_late_receipt_credit(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-) -> None:
-    """«🏦 شارژ کیف پول» under a late receipt: the manual wallet flow, pre-filled.
-
-    Nothing is written here. It loads the amount and the stamp the normal confirm
-    step (`admin_wallet_apply` → `adjust_wallet_manually`) already uses, then shows
-    that same confirm screen. The amount is the order's card due, read from the
-    order, never from the button.
-    """
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    order_id = _late_receipt_order_id(callback.data, AdminCB.LATE_CREDIT)
-    if order_id is None:
-        await callback.answer(texts.admin_invalid_id, show_alert=True)
-        return
-    order = await session.get(Order, order_id)
-    card_due = (
-        max(0, int(order.price_toman) - int(order.wallet_applied_toman or 0))
-        if order is not None
-        else 0
-    )
-    if order is None or order.status != OrderStatus.EXPIRED or card_due <= 0:
-        await callback.answer(texts.admin_late_receipt_gone, show_alert=True)
-        return
-    if await late_receipt_credited(session, user_id=int(order.user_id), order_id=order_id):
-        await callback.answer(texts.admin_late_receipt_already, show_alert=True)
-        return
-    target = await session.get(User, int(order.user_id))
-    if target is None:
-        await callback.answer(texts.admin_user_not_found, show_alert=True)
-        return
-    await state.clear()
-    await state.update_data(
-        wallet_user_id=int(target.id),
-        wallet_amount=card_due,
-        wallet_stamp=late_receipt_stamp(order_id),
-    )
-    await callback.answer()
-    message = _tg_message(callback)
-    if message is None:
-        return
-    balance = int(target.wallet_balance_toman or 0)
-    await message.answer(
-        texts.admin_wallet_confirm.format(
-            name=escape(_customer_name(target)),
-            verb=texts.admin_wallet_verb_credit,
-            amount=_fmt_toman(card_due),
-            after=_fmt_toman(balance + card_due),
-        ),
-        reply_markup=wallet_confirm_keyboard(int(target.id)),
-    )
 
 
 @router.callback_query(F.data.startswith(AdminCB.LATE_IGNORE))
@@ -4080,71 +3661,6 @@ async def admin_late_receipt_ignore(
     if message is not None:
         with contextlib.suppress(Exception):
             await message.edit_reply_markup(reply_markup=admin_back_home_keyboard())
-
-
-@router.callback_query(F.data.startswith(AdminCB.WALLET_OK))
-async def admin_wallet_apply(
-    callback: CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession,
-    settings: Settings,
-    db_user: User | None,
-    bot: Bot,
-) -> None:
-    if await _deny_if_not_admin(callback, settings, db_user):
-        return
-    raw = (callback.data or "")[len(AdminCB.WALLET_OK) :]
-    data = await state.get_data()
-    amount = data.get("wallet_amount")
-    stamp = data.get("wallet_stamp")
-    if not raw.isdigit() or not amount or not stamp:
-        await callback.answer(texts.admin_action_error, show_alert=True)
-        return
-    if data.get("wallet_user_id") != int(raw):
-        # The pending amount was typed for another customer; an older card's
-        # button must not spend it here.
-        await callback.answer(texts.stale_button, show_alert=True)
-        return
-    admin_id = callback.from_user.id if callback.from_user else 0
-    late_order = late_receipt_order_id(str(stamp))
-    if late_order is not None and await late_receipt_credited(
-        session, user_id=int(raw), order_id=late_order
-    ):
-        # A late receipt goes to every admin; the stamp is what they share, so a
-        # second admin confirming the same one would pay it out twice.
-        await state.clear()
-        await callback.answer(texts.admin_late_receipt_already, show_alert=True)
-        return
-    try:
-        await apply_wallet_adjustment(
-            session,
-            user_id=int(raw),
-            amount_toman=int(amount),
-            admin_telegram_id=int(admin_id),
-            stamp=str(stamp),
-        )
-    except ManualAdjustError as exc:
-        await callback.answer(str(exc), show_alert=True)
-        return
-    await state.clear()
-    target = await session.get(User, int(raw))
-    new_balance = int(target.wallet_balance_toman or 0) if target else 0
-    await callback.answer(texts.admin_wallet_done.format(wallet=_fmt_toman(new_balance)))
-
-    # The customer's money changed; they are told without being told who did it.
-    if target is not None:
-        tmpl = texts.notify_wallet_credit if int(amount) > 0 else texts.notify_wallet_debit
-        with contextlib.suppress(Exception):
-            await bot.send_message(
-                chat_id=target.telegram_id,
-                text=tmpl.format(
-                    amount=_fmt_toman(abs(int(amount))), wallet=_fmt_toman(new_balance)
-                ),
-            )
-
-    message = _tg_message(callback)
-    if message is not None:
-        await _show_customer(message, session, int(raw))
 
 
 # --------------------------------------------------------------------------- #

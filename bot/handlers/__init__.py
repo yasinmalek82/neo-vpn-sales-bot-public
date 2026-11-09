@@ -8,6 +8,8 @@ from bot.handlers import (
     account,
     account_link,
     admin,
+    admin_customers,
+    admin_wallet,
     common,
     customer_label,
     disruption,
@@ -44,6 +46,8 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.include_router(wallet.router)
     dp.include_router(referral.router)
     dp.include_router(admin.router)
+    dp.include_router(admin_customers.router)
+    dp.include_router(admin_wallet.router)
     dp.include_router(account_link.router)
     dp.include_router(mirza_history.router)
     dp.include_router(store_admin.router)

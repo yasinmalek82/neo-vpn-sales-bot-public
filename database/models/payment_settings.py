@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database.base import Base
@@ -25,6 +25,7 @@ class PaymentSettings(Base):
     card_holder_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     bank_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bank_sms_auto: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
